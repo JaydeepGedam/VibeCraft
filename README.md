@@ -40,8 +40,4 @@ npm run dev
 ## Contributing
 - Open an issue or PR. Keep changes small and include a short description of the problem and the fix.
 
-## License
-Include your license here (e.g., MIT) or add `LICENSE` to the repo.
-
 ---
-If you'd like, I can also add a short `description` field to each `package.json` or generate a `LICENSE` file — tell me which license you prefer.
