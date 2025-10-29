@@ -8,6 +8,7 @@ import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import Dashboard from "./pages/Dashboard";
 import Generate from "./pages/Generate";
+import ViewContent from "./pages/ViewContent";
 import History from "./pages/History";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
@@ -26,6 +27,7 @@ const App = () => (
           <Route path="/signup" element={<Signup />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/generate" element={<Generate />} />
+          <Route path="/content/:id" element={<ViewContent />} />
           <Route path="/history" element={<History />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<NotFound />} />

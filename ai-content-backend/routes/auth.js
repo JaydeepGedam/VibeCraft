@@ -9,8 +9,19 @@ router.post('/signup', async (req, res) => {
     const { name, email, password } = req.body;
     console.log('POST /auth/signup body:', req.body);
     if (!name || !email || !password) return res.status(400).json({ error: 'All fields required' });
+    // Password strength validation: min 8 chars, 1 uppercase, 1 lowercase, 1 digit, 1 symbol
+    const strongPasswordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
+    if (!strongPasswordRegex.test(password)) {
+        return res.status(400).json({ error: 'Password must be at least 8 characters and include uppercase, lowercase, number and symbol.' });
+    }
 
     try {
+        // check if email already exists to give a clear message
+        const existing = await User.findOne({ email });
+        if (existing) {
+            return res.status(400).json({ error: 'Email already exists. Please login.' });
+        }
+
         const hashed = await hashPassword(password);
         const newUser = new User({ name, email, password: hashed });
         await newUser.save();
@@ -21,8 +32,8 @@ router.post('/signup', async (req, res) => {
         res.json({ token, user: userSafe });
     } catch (err) {
         console.error('Signup error:', err);
-        // if duplicate key
-        if (err.code === 11000) return res.status(400).json({ error: 'Email already registered' });
+        // if duplicate key (race condition)
+        if (err.code === 11000) return res.status(400).json({ error: 'Email already exists. Please login.' });
         res.status(500).json({ error: 'User already exists or DB error' });
     }
 });

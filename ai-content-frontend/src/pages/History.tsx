@@ -15,7 +15,7 @@ import {
   AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Copy, RotateCw, Trash2 } from "lucide-react";
+import { FileText, Copy, RotateCw, Trash2, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { contentAPI } from "@/services/api";
 
@@ -48,8 +48,23 @@ const History = () => {
   const loadHistory = async () => {
     try {
       setLoading(true);
-      const res = await contentAPI.list();
-      setHistory(res.contents || []);
+      const res = await contentAPI.historyList();
+      // historyList returns an array of items
+      if (Array.isArray(res)) {
+        const mapped = res.map((item: any) => ({
+          _id: item._id,
+          originalId: item.original_content_id || item.original_content || item.original_contentId || null,
+          topic: item.topic || item.name || "",
+          contentType: item.type || item.contentType || "",
+          goal: item.goal || "",
+          tone: item.tone || "",
+          generatedText: item.content || item.generatedText || "",
+          createdAt: item.createdAt || item.created_at || item.created || "",
+        }));
+        setHistory(mapped || []);
+      } else {
+        setHistory([]);
+      }
     } catch (err) {
       toast.error("Failed to load history");
       setHistory([]);
@@ -67,19 +82,22 @@ const History = () => {
     toast.success("Copied to clipboard!");
   };
 
+  // Remove item only from the History UI (do NOT delete from backend or Dashboard)
   const handleDelete = async (id: string) => {
     try {
-      await contentAPI.delete(id);
-      toast.success("Content deleted");
-      // reload history
+      await contentAPI.historyDelete(id);
+      toast.success("Removed from history");
+      // reload
       loadHistory();
     } catch (err) {
-      toast.error("Failed to delete content");
+      toast.error("Failed to remove from history");
     }
   };
 
-  const handleView = (content: Content) => {
-    navigate("/generate", { state: { viewContent: content } });
+  const handleView = (content: any) => {
+    // If history item has original dashboard id, view that; otherwise fall back to history id
+    const targetId = content.originalId || content._id;
+    navigate(`/content/${targetId}`);
   };
 
   const handleRegenerate = (content: Content) => {
@@ -162,6 +180,10 @@ const History = () => {
                 <CardContent>
                   <p className="text-muted-foreground mb-4 line-clamp-2">{item.generatedText}</p>
                   <div className="flex gap-2 flex-wrap">
+                    <Button size="sm" variant="outline" onClick={() => handleView(item)} className="gap-2">
+                      <Eye className="w-4 h-4" />
+                      View
+                    </Button>
                     <Button
                       size="sm"
                       variant="outline"
@@ -188,14 +210,14 @@ const History = () => {
                       </AlertDialogTrigger>
                       <AlertDialogContent>
                         <AlertDialogHeader>
-                          <AlertDialogTitle>Delete content</AlertDialogTitle>
+                          <AlertDialogTitle>Remove from history</AlertDialogTitle>
                           <AlertDialogDescription>
-                            Are you sure you want to delete this content? This action cannot be undone.
+                            This will remove the item from your History view but will not delete it from your Dashboard or permanently from the server.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                           <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => handleDelete(item._id)}>Delete</AlertDialogAction>
+                          <AlertDialogAction onClick={() => handleDelete(item._id)}>Remove</AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
                     </AlertDialog>

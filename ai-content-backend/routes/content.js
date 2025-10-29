@@ -2,8 +2,10 @@ const express = require('express');
 const router = express.Router();
 const axios = require('axios');
 const OpenAI = require('openai');
+const mongoose = require('mongoose');
 const authMiddleware = require('../middleware/authMiddleware');
 const GeneratedContent = require('../models/GeneratedContent');
+const GeneratedHistory = require('../models/GeneratedHistory');
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY
@@ -17,6 +19,17 @@ router.post('/save', authMiddleware, async (req, res) => {
             user_id: req.user.id,
             topic, type, goal, tone, mood, content
         });
+        // Also save a copy to History collection so History is separate
+        try {
+          await GeneratedHistory.create({
+            user_id: req.user.id,
+            original_content_id: newContent._id,
+            topic, type, goal, tone, mood, content
+          });
+        } catch (histErr) {
+          console.error('Failed to save to history:', histErr);
+          // don't fail the main save if history save fails
+        }
         res.json({ success: true, content_id: newContent._id });
     } catch (err) {
         console.error(err);
@@ -80,6 +93,66 @@ router.put('/:id', authMiddleware, async (req, res) => {
     }
 
     res.json({ success: true, updatedContent });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+
+
+// History endpoints
+// Save to history explicitly
+router.post('/history', authMiddleware, async (req, res) => {
+  const { topic, type, goal, tone, mood, content, original_content_id } = req.body;
+  try {
+    const newHist = await GeneratedHistory.create({
+      user_id: req.user.id,
+      original_content_id,
+      topic, type, goal, tone, mood, content
+    });
+    res.json({ success: true, history_id: newHist._id });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'DB error' });
+  }
+});
+
+// Get user history
+router.get('/history', authMiddleware, async (req, res) => {
+  try {
+    const items = await GeneratedHistory.find({ user_id: req.user.id }).sort({ created_at: -1 });
+    res.json(items);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'DB error' });
+  }
+});
+
+// Delete from history (only history collection)
+router.delete('/history/:id', authMiddleware, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const deleted = await GeneratedHistory.findOneAndDelete({ _id: id, user_id: req.user.id });
+    if (!deleted) return res.status(404).json({ error: 'History item not found' });
+    res.json({ success: true, message: 'Removed from history' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get single content by id
+router.get('/:id', authMiddleware, async (req, res) => {
+  const { id } = req.params;
+  // validate id to avoid CastError when path segments like 'history' are passed
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({ error: 'Invalid content id' });
+  }
+  try {
+    const content = await GeneratedContent.findOne({ _id: id, user_id: req.user.id });
+    if (!content) return res.status(404).json({ error: 'Content not found' });
+    res.json(content);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });

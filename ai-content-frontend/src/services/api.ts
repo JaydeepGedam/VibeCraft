@@ -29,10 +29,12 @@ const apiCall = async (endpoint: string, options: RequestInit = {}) => {
   const response = await fetch(`${API_BASE_URL}${endpoint}`, fetchOptions);
   
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Request failed' }));
-    throw new Error(error.message || 'Request failed');
+    // Try to parse JSON error body and pick a helpful field
+    const errorBody = await response.json().catch(() => ({}));
+    const msg = (errorBody && (errorBody.message || errorBody.error || errorBody.msg)) || 'Request failed';
+    throw new Error(msg);
   }
-  
+
   return response.json();
 };
 
@@ -123,6 +125,30 @@ export const contentAPI = {
       return { contents: mapped };
     }
     return data;
+  },
+  get: async (id: string) => {
+    return apiCall(`${API_ENDPOINTS.GET_CONTENT}/${id}`, {
+      method: 'GET',
+    });
+  },
+  // History APIs
+  historyList: async () => {
+    return apiCall(API_ENDPOINTS.HISTORY, { method: 'GET' });
+  },
+  historySave: async (payload: { topic: string; contentType: string; goal: string; tone: string; mood: number; generatedText: string; original_content_id?: string }) => {
+    const body = {
+      topic: payload.topic,
+      type: payload.contentType,
+      goal: payload.goal,
+      tone: payload.tone,
+      mood: payload.mood,
+      content: payload.generatedText,
+      original_content_id: payload.original_content_id,
+    };
+    return apiCall(API_ENDPOINTS.HISTORY, { method: 'POST', body: JSON.stringify(body) });
+  },
+  historyDelete: async (id: string) => {
+    return apiCall(`${API_ENDPOINTS.HISTORY}/${id}`, { method: 'DELETE' });
   },
   
   delete: async (id: string) => {

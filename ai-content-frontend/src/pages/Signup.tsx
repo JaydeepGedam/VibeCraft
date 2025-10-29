@@ -13,6 +13,7 @@ const Signup = () => {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,8 +23,10 @@ const Signup = () => {
       return;
     }
 
-    if (password.length < 6) {
-      toast.error("Password must be at least 6 characters");
+    // Strong password: min 8 chars, 1 uppercase, 1 lowercase, 1 digit, 1 symbol
+    const strongPasswordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
+    if (!strongPasswordRegex.test(password)) {
+      toast.error("Password must be at least 8 chars and include uppercase, lowercase, number and symbol");
       return;
     }
 
@@ -35,7 +38,13 @@ const Signup = () => {
       toast.success("Account created successfully!");
       navigate("/dashboard");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Signup failed");
+      const msg = error instanceof Error ? error.message : "Signup failed";
+      // If backend says email exists, ask user to login
+      if (msg.toLowerCase().includes('email') && msg.toLowerCase().includes('login')) {
+        toast.error(msg);
+      } else {
+        toast.error(msg);
+      }
     }
   };
 
@@ -77,14 +86,26 @@ const Signup = () => {
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full"
-              />
+              <div className="flex items-center gap-2">
+                <Input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((s) => !s)}
+                  className="text-sm text-primary hover:underline px-2"
+                >
+                  {showPassword ? 'Hide' : 'Show'}
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Password must be 8+ characters and include uppercase, lowercase, number and symbol.
+              </p>
             </div>
             <Button type="submit" className="w-full gap-2">
               Sign Up

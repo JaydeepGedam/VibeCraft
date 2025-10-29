@@ -82,7 +82,8 @@ const Dashboard = () => {
   };
 
   const handleView = (content: Content) => {
-    navigate("/generate", { state: { viewContent: content } });
+    // Navigate to dedicated view page for this content
+    navigate(`/content/${content._id}`);
   };
 
   const handleRegenerate = (content: Content) => {
@@ -150,19 +151,19 @@ const Dashboard = () => {
                             <Trash2 className="w-4 h-4" />
                           </Button>
                         </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete content</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Are you sure you want to delete this content? This action cannot be undone.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            {/* On Dashboard we only remove from the UI; permanent deletion is available in History. */}
-                            <AlertDialogAction onClick={() => handleRemoveFromDashboard(content._id)}>Remove</AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete content</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This will permanently delete the content from your account and cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              {/* On Dashboard delete is permanent */}
+                              <AlertDialogAction onClick={() => handleDelete(content._id)}>Delete</AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
                       </AlertDialog>
                     </div>
                   </div>

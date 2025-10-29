@@ -11,6 +11,8 @@ export const API_ENDPOINTS = {
   GENERATE: '/content/generate',
   SAVE: '/content/save',
   LIST: '/content/dashboard',
+  GET_CONTENT: '/content',
+  HISTORY: '/content/history',
   // use RESTful delete: DELETE /content/:id
   DELETE: '/content',
   

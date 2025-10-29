@@ -132,7 +132,7 @@ const Generate = () => {
     }
 
     try {
-      await contentAPI.save({
+      const res = await contentAPI.save({
         topic,
         contentType,
         goal,
