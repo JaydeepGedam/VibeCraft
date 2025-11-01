@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Sparkles } from "lucide-react";
+import { Sparkles, RotateCw } from "lucide-react";
 import { toast } from "sonner";
 import { authAPI } from "@/services/api";
 
@@ -13,6 +13,13 @@ const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const isValidEmail = (value: string) => {
+    return /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z]{2,})+$/.test(
+      value,
+    );
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,6 +29,12 @@ const Login = () => {
       return;
     }
 
+    if (!isValidEmail(email)) {
+      toast.error("Please enter a valid email address");
+      return;
+    }
+
+    setIsLoading(true);
     try {
       const response = await authAPI.login(email, password);
       localStorage.setItem("isAuthenticated", "true");
@@ -31,6 +44,8 @@ const Login = () => {
       navigate("/dashboard");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Login failed");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -79,9 +94,17 @@ const Login = () => {
                 </button>
               </div>
             </div>
-            <Button type="submit" className="w-full gap-2">
-              Login
-              <Sparkles className="w-4 h-4" />
+            <Button type="submit" className="w-full gap-2" disabled={isLoading}>
+              {isLoading ? (
+                <>
+                  <RotateCw className="w-4 h-4 animate-spin" /> Logging in...
+                </>
+              ) : (
+                <>
+                  Login
+                  <Sparkles className="w-4 h-4" />
+                </>
+              )}
             </Button>
           </form>
           <div className="mt-4 text-center text-sm">
