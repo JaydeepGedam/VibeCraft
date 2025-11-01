@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import Layout from "@/components/Layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,10 +32,14 @@ interface Content {
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const isAuthenticated = localStorage.getItem("isAuthenticated") === "true";
   const userName = localStorage.getItem("userName") || "User";
   const [contents, setContents] = useState<Content[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  const from = location.state?.from;
+  const welcomeMessage = from === "signup" ? `Welcome, ${userName}!` : `Welcome Back, ${userName}!`;
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -102,7 +106,7 @@ const Dashboard = () => {
     <Layout showNav>
       <div className="max-w-6xl mx-auto animate-fade-in">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-2">Welcome back, {userName}!</h1>
+          <h1 className="text-4xl font-bold mb-2">{welcomeMessage}</h1>
           <p className="text-muted-foreground text-lg">
             Your AI-generated content library
           </p>

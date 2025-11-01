@@ -50,7 +50,7 @@ const Signup = () => {
       localStorage.setItem("authToken", response.token);
       localStorage.setItem("userName", response.user.name);
       toast.success("Account created successfully!");
-      navigate("/dashboard");
+      navigate("/dashboard", { state: { from: "signup" } });
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Signup failed";
       toast.error(msg);

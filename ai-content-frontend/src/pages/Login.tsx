@@ -41,7 +41,7 @@ const Login = () => {
       localStorage.setItem("authToken", response.token);
       localStorage.setItem("userName", response.user.name);
       toast.success("Welcome back!");
-      navigate("/dashboard");
+      navigate("/dashboard", { state: { from: "login" } });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Login failed");
     } finally {
