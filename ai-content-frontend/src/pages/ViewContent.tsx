@@ -3,9 +3,9 @@ import { useNavigate, useParams } from "react-router-dom";
 import Layout from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Copy, RotateCw, ArrowLeft } from "lucide-react";
+import { Copy, RotateCw, ArrowLeft, Linkedin } from "lucide-react";
 import { toast } from "sonner";
-import { contentAPI } from "@/services/api";
+import { contentAPI, linkedInAPI } from "@/services/api";
 
 interface Content {
   _id: string;
@@ -22,12 +22,26 @@ const ViewContent = () => {
   const navigate = useNavigate();
   const [content, setContent] = useState<Content | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isPostingToLinkedIn, setIsPostingToLinkedIn] = useState(false);
+  const [linkedInConnected, setLinkedInConnected] = useState(false);
 
   useEffect(() => {
     if (!id) return;
     loadContent(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  useEffect(() => {
+    const checkLinkedInStatus = async () => {
+      try {
+        const status = await linkedInAPI.getStatus();
+        setLinkedInConnected(status.isConnected);
+      } catch (error) {
+        // Silently fail
+      }
+    };
+    checkLinkedInStatus();
+  }, []);
 
   const loadContent = async (contentId: string) => {
     try {
@@ -58,6 +72,32 @@ const ViewContent = () => {
   const handleRegenerate = (content: Content) => {
     // Navigate to generate page with regenerate state
     navigate('/generate', { state: { regenerate: content } });
+  };
+
+  const handlePostToLinkedIn = async () => {
+    if (!content || !content.generatedText) {
+      toast.error("No content to post");
+      return;
+    }
+
+    if (!linkedInConnected) {
+      toast.error("Please connect your LinkedIn account in Settings first");
+      return;
+    }
+
+    try {
+      setIsPostingToLinkedIn(true);
+      await linkedInAPI.post(content.generatedText);
+      toast.success("Posted to LinkedIn successfully!");
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to post to LinkedIn";
+      toast.error(errorMessage);
+      if (errorMessage.includes("not connected") || errorMessage.includes("expired")) {
+        setLinkedInConnected(false);
+      }
+    } finally {
+      setIsPostingToLinkedIn(false);
+    }
   };
 
   return (
@@ -92,13 +132,25 @@ const ViewContent = () => {
             </CardHeader>
             <CardContent>
               <p className="text-muted-foreground mb-4 whitespace-pre-line">{content.generatedText}</p>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <Button size="sm" variant="outline" onClick={() => handleCopy(content.generatedText)} className="gap-2">
                   <Copy className="w-4 h-4" /> Copy
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => handleRegenerate(content)} className="gap-2">
                   <RotateCw className="w-4 h-4" /> Regenerate
                 </Button>
+                {linkedInConnected && (
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    onClick={handlePostToLinkedIn} 
+                    className="gap-2 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950 dark:hover:bg-blue-900 border-blue-200 dark:border-blue-800"
+                    disabled={isPostingToLinkedIn}
+                  >
+                    <Linkedin className="w-4 h-4" />
+                    {isPostingToLinkedIn ? "Posting..." : "Post to LinkedIn"}
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>

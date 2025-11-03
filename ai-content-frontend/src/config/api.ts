@@ -1,5 +1,5 @@
 // API Configuration
-export const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://vibecraft-backend-1nbt.onrender.com';
+export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export const API_ENDPOINTS = {
   // Auth endpoints
@@ -19,4 +19,11 @@ export const API_ENDPOINTS = {
   // User endpoints
   PREFERENCES: '/user/preferences',
   UPDATE_PREFERENCES: '/user/preferences/update',
+  
+  // LinkedIn endpoints
+  LINKEDIN_AUTH_URL: '/linkedin/auth-url',
+  LINKEDIN_CALLBACK: '/linkedin/callback',
+  LINKEDIN_STATUS: '/linkedin/status',
+  LINKEDIN_DISCONNECT: '/linkedin/disconnect',
+  LINKEDIN_POST: '/linkedin/post',
 };

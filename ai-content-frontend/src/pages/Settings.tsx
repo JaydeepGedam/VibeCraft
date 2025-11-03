@@ -1,29 +1,53 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { userAPI } from "@/services/api";
+import { userAPI, linkedInAPI } from "@/services/api";
+import { Linkedin, Check, X } from "lucide-react";
 
 const Settings = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const isAuthenticated = localStorage.getItem("isAuthenticated") === "true";
 
   const [defaultTone, setDefaultTone] = useState("");
   const [defaultContentType, setDefaultContentType] = useState("");
   const [defaultGoal, setDefaultGoal] = useState("");
   const [loading, setLoading] = useState(true);
+  const [linkedInLoading, setLinkedInLoading] = useState(false);
+  const [linkedInStatus, setLinkedInStatus] = useState<{
+    isConnected: boolean;
+    profile: { name: string; connectedAt: string } | null;
+  } | null>(null);
 
   useEffect(() => {
     if (!isAuthenticated) {
       navigate("/login");
     } else {
       loadPreferences();
+      loadLinkedInStatus();
     }
   }, [isAuthenticated, navigate]);
+
+  // Handle LinkedIn OAuth callback
+  useEffect(() => {
+    const success = searchParams.get("linkedin_success");
+    const error = searchParams.get("linkedin_error");
+    
+    if (success === "true") {
+      toast.success("LinkedIn account connected successfully!");
+      loadLinkedInStatus();
+      // Clean URL
+      navigate("/settings", { replace: true });
+    } else if (error) {
+      toast.error(`LinkedIn connection failed: ${error}`);
+      navigate("/settings", { replace: true });
+    }
+  }, [searchParams, navigate]);
 
   const loadPreferences = async () => {
     try {
@@ -38,6 +62,40 @@ const Settings = () => {
       setDefaultGoal("");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadLinkedInStatus = async () => {
+    try {
+      const status = await linkedInAPI.getStatus();
+      setLinkedInStatus(status);
+    } catch (error) {
+      console.error("Failed to load LinkedIn status:", error);
+    }
+  };
+
+  const handleConnectLinkedIn = async () => {
+    try {
+      setLinkedInLoading(true);
+      const response = await linkedInAPI.getAuthUrl();
+      // Redirect to LinkedIn OAuth
+      window.location.href = response.authUrl;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to get LinkedIn auth URL");
+      setLinkedInLoading(false);
+    }
+  };
+
+  const handleDisconnectLinkedIn = async () => {
+    try {
+      setLinkedInLoading(true);
+      await linkedInAPI.disconnect();
+      toast.success("LinkedIn account disconnected successfully");
+      await loadLinkedInStatus();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to disconnect LinkedIn account");
+    } finally {
+      setLinkedInLoading(false);
     }
   };
 
@@ -129,6 +187,68 @@ const Settings = () => {
             <Button onClick={handleSave} className="w-full">
               Save Preferences
             </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Linkedin className="w-5 h-5" />
+              LinkedIn Integration
+            </CardTitle>
+            <CardDescription>
+              Connect your LinkedIn account to post content directly
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {linkedInStatus?.isConnected ? (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-4 bg-green-50 dark:bg-green-950 rounded-lg border border-green-200 dark:border-green-800">
+                  <div className="flex items-center gap-3">
+                    <Check className="w-5 h-5 text-green-600 dark:text-green-400" />
+                    <div>
+                      <p className="font-medium">Connected</p>
+                      {linkedInStatus.profile && (
+                        <p className="text-sm text-muted-foreground">
+                          {linkedInStatus.profile.name}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <Button
+                  onClick={handleDisconnectLinkedIn}
+                  variant="destructive"
+                  className="w-full"
+                  disabled={linkedInLoading}
+                >
+                  <X className="w-4 h-4 mr-2" />
+                  Disconnect LinkedIn
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border">
+                  <div className="flex items-center gap-3">
+                    <X className="w-5 h-5 text-muted-foreground" />
+                    <div>
+                      <p className="font-medium">Not Connected</p>
+                      <p className="text-sm text-muted-foreground">
+                        Connect your LinkedIn account to post content directly
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <Button
+                  onClick={handleConnectLinkedIn}
+                  className="w-full"
+                  disabled={linkedInLoading}
+                >
+                  <Linkedin className="w-4 h-4 mr-2" />
+                  {linkedInLoading ? "Connecting..." : "Connect LinkedIn"}
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

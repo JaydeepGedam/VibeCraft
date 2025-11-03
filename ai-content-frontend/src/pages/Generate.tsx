@@ -8,9 +8,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
-import { Sparkles, Copy, RotateCw, Save } from "lucide-react";
+import { Sparkles, Copy, RotateCw, Save, Linkedin } from "lucide-react";
 import { toast } from "sonner";
-import { contentAPI, userAPI } from "@/services/api";
+import { contentAPI, userAPI, linkedInAPI } from "@/services/api";
 
 const Generate = () => {
   const navigate = useNavigate();
@@ -24,6 +24,8 @@ const Generate = () => {
   const [canSave, setCanSave] = useState(false);
   const [generatedContent, setGeneratedContent] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isPostingToLinkedIn, setIsPostingToLinkedIn] = useState(false);
+  const [linkedInConnected, setLinkedInConnected] = useState(false);
   const location = useLocation();
 
   // Load user preferences on component mount
@@ -42,8 +44,18 @@ const Generate = () => {
       }
     };
 
+    const checkLinkedInStatus = async () => {
+      try {
+        const status = await linkedInAPI.getStatus();
+        setLinkedInConnected(status.isConnected);
+      } catch (error) {
+        // Silently fail
+      }
+    };
+
     if (isAuthenticated) {
       loadPreferences();
+      checkLinkedInStatus();
     }
   }, [isAuthenticated]);
 
@@ -145,6 +157,32 @@ const Generate = () => {
       setCanSave(false);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to save content");
+    }
+  };
+
+  const handlePostToLinkedIn = async () => {
+    if (!generatedContent) {
+      toast.error("No content to post");
+      return;
+    }
+
+    if (!linkedInConnected) {
+      toast.error("Please connect your LinkedIn account in Settings first");
+      return;
+    }
+
+    try {
+      setIsPostingToLinkedIn(true);
+      await linkedInAPI.post(generatedContent);
+      toast.success("Posted to LinkedIn successfully!");
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to post to LinkedIn";
+      toast.error(errorMessage);
+      if (errorMessage.includes("not connected") || errorMessage.includes("expired")) {
+        setLinkedInConnected(false);
+      }
+    } finally {
+      setIsPostingToLinkedIn(false);
     }
   };
 
@@ -284,6 +322,17 @@ const Generate = () => {
                       <Save className="w-4 h-4" />
                       Save
                     </Button>
+                    {linkedInConnected && (
+                      <Button 
+                        onClick={handlePostToLinkedIn} 
+                        variant="outline" 
+                        className="gap-2 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950 dark:hover:bg-blue-900 border-blue-200 dark:border-blue-800"
+                        disabled={isPostingToLinkedIn}
+                      >
+                        <Linkedin className="w-4 h-4" />
+                        {isPostingToLinkedIn ? "Posting..." : "Post to LinkedIn"}
+                      </Button>
+                    )}
                   </div>
                 </>
               ) : (

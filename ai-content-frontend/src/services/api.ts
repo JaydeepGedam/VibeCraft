@@ -178,3 +178,31 @@ export const userAPI = {
     });
   },
 };
+
+// LinkedIn API
+export const linkedInAPI = {
+  getAuthUrl: async () => {
+    return apiCall(API_ENDPOINTS.LINKEDIN_AUTH_URL, {
+      method: 'GET',
+    });
+  },
+  
+  getStatus: async () => {
+    return apiCall(API_ENDPOINTS.LINKEDIN_STATUS, {
+      method: 'GET',
+    });
+  },
+  
+  disconnect: async () => {
+    return apiCall(API_ENDPOINTS.LINKEDIN_DISCONNECT, {
+      method: 'DELETE',
+    });
+  },
+  
+  post: async (content: string) => {
+    return apiCall(API_ENDPOINTS.LINKEDIN_POST, {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    });
+  },
+};
