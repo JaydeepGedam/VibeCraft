@@ -65,20 +65,22 @@ router.get('/callback', async (req, res) => {
       personUrn = `urn:li:person:${personUrn}`;
     }
     
+    // Enforce one-to-one LinkedIn profile per Vibecraft user
+    const existing = await User.findOne({ 'linkedIn.profileId': personUrn }, { _id: 1 }).lean();
+    if (existing && existing._id.toString() !== state) {
+      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/settings?linkedin_error=already_linked`);
+    }
+
     // Update user with LinkedIn data (using state as user ID)
-    await User.updateOne(
-      { _id: state },
-      {
-        $set: {
-          'linkedIn.accessToken': access_token,
-          'linkedIn.refreshToken': refresh_token,
-          'linkedIn.profileId': personUrn,
-          'linkedIn.profileName': profile.name,
-          'linkedIn.connectedAt': new Date(),
-        }
+    await User.findByIdAndUpdate(state, {
+      linkedIn: {
+        accessToken: access_token,
+        refreshToken: refresh_token,
+        profileId: personUrn,
+        profileName: profile.name,
+        connectedAt: new Date(),
       },
-      { strict: false }
-    );
+    });
     const fetched = await User.findById(state).lean();
     console.log('LI update result: fetched linkedIn =', fetched?.linkedIn);
     
@@ -128,6 +130,12 @@ router.post('/callback', authMiddleware, async (req, res) => {
       personUrn = `urn:li:person:${personUrn}`;
     }
     
+    // Enforce one-to-one LinkedIn profile per Vibecraft user
+    const existing = await User.findOne({ 'linkedIn.profileId': personUrn }, { _id: 1 }).lean();
+    if (existing && existing._id.toString() !== req.user.id) {
+      return res.status(400).json({ error: 'already_linked' });
+    }
+
     // Update user with LinkedIn data
     await User.findByIdAndUpdate(req.user.id, {
       linkedIn: {
@@ -174,10 +182,7 @@ router.get('/status', authMiddleware, async (req, res) => {
 // Disconnect LinkedIn
 router.delete('/disconnect', authMiddleware, async (req, res) => {
   try {
-    await User.findByIdAndUpdate(req.user.id, {
-      $unset: { linkedIn: 1 }
-    });
-    
+    await User.findByIdAndUpdate(req.user.id, { $unset: { linkedIn: 1 } });
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: 'Failed to disconnect LinkedIn account' });

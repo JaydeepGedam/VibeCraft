@@ -44,7 +44,10 @@ const Settings = () => {
       // Clean URL
       navigate("/settings", { replace: true });
     } else if (error) {
-      toast.error(`LinkedIn connection failed: ${error}`);
+      const message = error === 'already_linked'
+        ? 'This LinkedIn account is already linked to another Vibecraft user.'
+        : `LinkedIn connection failed: ${error}`;
+      toast.error(message);
       navigate("/settings", { replace: true });
     }
   }, [searchParams, navigate]);
@@ -91,6 +94,8 @@ const Settings = () => {
       setLinkedInLoading(true);
       await linkedInAPI.disconnect();
       toast.success("LinkedIn account disconnected successfully");
+      // Optimistically update UI; then refresh from server
+      setLinkedInStatus({ isConnected: false, profile: null });
       await loadLinkedInStatus();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to disconnect LinkedIn account");

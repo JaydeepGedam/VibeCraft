@@ -10,9 +10,13 @@ const apiCall = async (endpoint: string, options: RequestInit = {}) => {
   const token = getAuthToken();
   
   const headers: HeadersInit = {
-    'Content-Type': 'application/json',
     ...options.headers,
   };
+  // Only set Content-Type for requests that send a JSON body
+  const hasBody = typeof (options as any).body !== 'undefined' && (options as any).body !== null;
+  if (hasBody && !('Content-Type' in headers)) {
+    (headers as any)['Content-Type'] = 'application/json';
+  }
   
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
@@ -35,7 +39,14 @@ const apiCall = async (endpoint: string, options: RequestInit = {}) => {
     throw new Error(msg);
   }
 
-  return response.json();
+  // Safely handle empty or 204 responses
+  if (response.status === 204) return {};
+  const contentLength = response.headers.get('content-length');
+  if (contentLength === '0') return {};
+  // Some servers omit content-length but return empty body; guard with text peek
+  const text = await response.text();
+  if (!text) return {};
+  return JSON.parse(text);
 };
 
 // Auth API
