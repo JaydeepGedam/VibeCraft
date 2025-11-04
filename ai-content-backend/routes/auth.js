@@ -44,7 +44,7 @@ router.post('/login', async (req, res) => {
     console.log('POST /auth/login body:', req.body);
     try {
         const user = await User.findOne({ email });
-        if (!user) return res.status(400).json({ error: 'Invalid credentials' });
+        if (!user) return res.status(400).json({ error: 'User doesn\'t exist, please sign up' });
 
         const valid = await comparePassword(password, user.password);
         if (!valid) return res.status(400).json({ error: 'Invalid credentials' });

@@ -29,7 +29,7 @@ npm start
 cd ai-content-frontend
 npm install
 npm run dev
-# open the URL printed by Vite (usually http://localhost:5173)
+# open the URL printed by Vite (usually http://localhost:8080)
 ```
 
 ## Project structure (top-level)

@@ -29,11 +29,11 @@ router.get('/callback', async (req, res) => {
     const { code, state, error } = req.query;
     
     if (error) {
-      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/settings?linkedin_error=${encodeURIComponent(error)}`);
+      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:8080'}/settings?linkedin_error=${encodeURIComponent(error)}`);
     }
     
     if (!code || !state) {
-      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/settings?linkedin_error=missing_params`);
+      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:8080'}/settings?linkedin_error=missing_params`);
     }
     
     // Exchange code for access token
@@ -68,7 +68,7 @@ router.get('/callback', async (req, res) => {
     // Enforce one-to-one LinkedIn profile per Vibecraft user
     const existing = await User.findOne({ 'linkedIn.profileId': personUrn }, { _id: 1 }).lean();
     if (existing && existing._id.toString() !== state) {
-      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/settings?linkedin_error=already_linked`);
+      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:8080'}/settings?linkedin_error=already_linked`);
     }
 
     // Update user with LinkedIn data (using state as user ID)
@@ -85,10 +85,10 @@ router.get('/callback', async (req, res) => {
     console.log('LI update result: fetched linkedIn =', fetched?.linkedIn);
     
     // Redirect to frontend with success
-    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/settings?linkedin_success=true`);
+    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:8080'}/settings?linkedin_success=true`);
   } catch (error) {
     console.error('LinkedIn callback error:', error.response?.data || error.message);
-    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/settings?linkedin_error=connection_failed`);
+    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:8080'}/settings?linkedin_error=connection_failed`);
   }
 });
 
