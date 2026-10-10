@@ -7,7 +7,13 @@ const contentSchema = new mongoose.Schema({
     goal: String,
     tone: String,
     mood: String,
+    audience: String,
+    instructions: String,
     content: String,
+    is_favorite: { type: Boolean, default: false },
+    is_published: { type: Boolean, default: false },
+    published_at: { type: Date },
+    published_platform: { type: String, default: '' },
     created_at: { type: Date, default: Date.now }
 });
 

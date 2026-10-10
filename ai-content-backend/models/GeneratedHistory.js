@@ -8,7 +8,11 @@ const historySchema = new mongoose.Schema({
     goal: String,
     tone: String,
     mood: String,
+    audience: String,
+    instructions: String,
     content: String,
+    is_published: { type: Boolean, default: false },
+    published_platform: { type: String, default: '' },
     created_at: { type: Date, default: Date.now }
 });
 

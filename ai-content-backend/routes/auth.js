@@ -7,7 +7,7 @@ const { hashPassword, comparePassword } = require('../utils/hash');
 // Signup
 router.post('/signup', async (req, res) => {
     const { name, email, password } = req.body;
-    console.log('POST /auth/signup body:', req.body);
+    console.log('POST /auth/signup email:', email);
     if (!name || !email || !password) return res.status(400).json({ error: 'All fields required' });
     // Password strength validation: min 8 chars, 1 uppercase, 1 lowercase, 1 digit, 1 symbol
     const strongPasswordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
@@ -41,7 +41,7 @@ router.post('/signup', async (req, res) => {
 // Login
 router.post('/login', async (req, res) => {
     const { email, password } = req.body;
-    console.log('POST /auth/login body:', req.body);
+    console.log('POST /auth/login email:', email);
     try {
         const user = await User.findOne({ email });
         if (!user) return res.status(400).json({ error: 'User doesn\'t exist, please sign up' });

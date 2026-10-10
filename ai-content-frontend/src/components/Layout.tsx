@@ -1,7 +1,7 @@
-import { ReactNode } from "react";
+import { ReactNode, useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Sparkles, LogOut, Home, FileText, History, Settings } from "lucide-react";
+import { Sparkles, LogOut, Home, History, Settings, Sun, Moon } from "lucide-react";
 
 interface LayoutProps {
   children: ReactNode;
@@ -13,8 +13,33 @@ const Layout = ({ children, showNav = false }: LayoutProps) => {
   const location = useLocation();
   const isAuthenticated = localStorage.getItem("isAuthenticated") === "true";
 
+  const [isDark, setIsDark] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("theme");
+      if (saved) return saved === "dark";
+      return document.documentElement.classList.contains("dark");
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    if (isDark) {
+      document.documentElement.classList.add("dark");
+      localStorage.setItem("theme", "dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+      localStorage.setItem("theme", "light");
+    }
+  }, [isDark]);
+
+  const toggleTheme = () => {
+    setIsDark((prev) => !prev);
+  };
+
   const handleLogout = () => {
     localStorage.removeItem("isAuthenticated");
+    localStorage.removeItem("authToken");
+    localStorage.removeItem("userName");
     navigate("/");
   };
 
@@ -29,7 +54,7 @@ const Layout = ({ children, showNav = false }: LayoutProps) => {
     <div className="min-h-screen bg-background">
       {showNav && isAuthenticated && (
         <nav className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
-          <div className="container mx-auto px-4 py-4">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 lg:px-12 xl:px-16 py-4">
             <div className="flex items-center justify-between">
               <Link to="/dashboard" className="flex items-center gap-2 group">
                 <div className="p-2 rounded-lg bg-gradient-to-br from-primary to-accent transition-transform group-hover:scale-105">
@@ -59,10 +84,23 @@ const Layout = ({ children, showNav = false }: LayoutProps) => {
                 })}
               </div>
 
-              <Button onClick={handleLogout} variant="outline" size="sm" className="gap-2">
-                <LogOut className="w-4 h-4" />
-                Logout
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={toggleTheme}
+                  variant="outline"
+                  size="sm"
+                  aria-label="Toggle theme"
+                  className="px-2.5"
+                  title={isDark ? "Switch to Light mode" : "Switch to Dark mode"}
+                >
+                  {isDark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-700 dark:text-slate-300" />}
+                </Button>
+
+                <Button onClick={handleLogout} variant="outline" size="sm" className="gap-2">
+                  <LogOut className="w-4 h-4" />
+                  Logout
+                </Button>
+              </div>
             </div>
 
             <div className="md:hidden flex gap-1 mt-3 overflow-x-auto pb-2">
@@ -86,7 +124,7 @@ const Layout = ({ children, showNav = false }: LayoutProps) => {
           </div>
         </nav>
       )}
-      <main className="container mx-auto px-4 py-8">{children}</main>
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 lg:px-12 xl:px-16 py-8 md:py-10">{children}</main>
     </div>
   );
 };

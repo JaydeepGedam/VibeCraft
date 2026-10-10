@@ -15,7 +15,8 @@ router.get('/auth-url', authMiddleware, (req, res) => {
   const clientId = process.env.LINKEDIN_CLIENT_ID;
   const redirectUri = process.env.LINKEDIN_REDIRECT_URI;
   const scope = 'openid profile email w_member_social';
-  const state = req.user.id; // Use user ID as state for security
+  const redirectTo = req.query.redirect_to === 'generate' ? 'generate' : 'settings';
+  const state = `${req.user.id}__${redirectTo}`;
   
   const authUrl = `${LINKEDIN_AUTH_URL}?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}&state=${state}`;
   
@@ -27,13 +28,16 @@ router.get('/callback', async (req, res) => {
   try {
     console.log('LI callback query:', req.query);
     const { code, state, error } = req.query;
+    const [userId, targetPage] = (state || '').split('__');
+    const redirectPath = targetPage === 'generate' ? '/generate' : '/settings';
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:8080';
     
     if (error) {
-      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:8080'}/settings?linkedin_error=${encodeURIComponent(error)}`);
+      return res.redirect(`${frontendUrl}${redirectPath}?linkedin_error=${encodeURIComponent(error)}`);
     }
     
-    if (!code || !state) {
-      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:8080'}/settings?linkedin_error=missing_params`);
+    if (!code || !state || !userId) {
+      return res.redirect(`${frontendUrl}${redirectPath}?linkedin_error=missing_params`);
     }
     
     // Exchange code for access token
@@ -67,12 +71,12 @@ router.get('/callback', async (req, res) => {
     
     // Enforce one-to-one LinkedIn profile per Vibecraft user
     const existing = await User.findOne({ 'linkedIn.profileId': personUrn }, { _id: 1 }).lean();
-    if (existing && existing._id.toString() !== state) {
-      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:8080'}/settings?linkedin_error=already_linked`);
+    if (existing && existing._id.toString() !== userId) {
+      return res.redirect(`${frontendUrl}${redirectPath}?linkedin_error=already_linked`);
     }
 
-    // Update user with LinkedIn data (using state as user ID)
-    await User.findByIdAndUpdate(state, {
+    // Update user with LinkedIn data (using userId)
+    await User.findByIdAndUpdate(userId, {
       linkedIn: {
         accessToken: access_token,
         refreshToken: refresh_token,
@@ -81,14 +85,14 @@ router.get('/callback', async (req, res) => {
         connectedAt: new Date(),
       },
     });
-    const fetched = await User.findById(state).lean();
-    console.log('LI update result: fetched linkedIn =', fetched?.linkedIn);
+    console.log('LI update successful for user:', userId);
     
     // Redirect to frontend with success
-    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:8080'}/settings?linkedin_success=true`);
+    res.redirect(`${frontendUrl}${redirectPath}?linkedin_success=true`);
   } catch (error) {
     console.error('LinkedIn callback error:', error.response?.data || error.message);
-    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:8080'}/settings?linkedin_error=connection_failed`);
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:8080';
+    res.redirect(`${frontendUrl}/settings?linkedin_error=connection_failed`);
   }
 });
 
@@ -189,6 +193,80 @@ router.delete('/disconnect', authMiddleware, async (req, res) => {
   }
 });
 
+// Helper to post using modern LinkedIn REST Posts API
+const tryRestPost = async (accessToken, authorUrn, content) => {
+  return axios.post('https://api.linkedin.com/rest/posts', {
+    author: authorUrn,
+    commentary: content,
+    visibility: 'PUBLIC',
+    distribution: {
+      feedDistribution: 'MAIN_FEED',
+      targetEntities: [],
+      thirdPartyDistributionChannels: []
+    },
+    lifecycleState: 'PUBLISHED',
+    isReshareDisabledByAuthor: false
+  }, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+      'LinkedIn-Version': '202401',
+      'X-Restli-Protocol-Version': '2.0.0'
+    }
+  });
+};
+
+// Helper to post using legacy UGC Posts API
+const tryUgcPost = async (accessToken, authorUrn, content) => {
+  const postData = {
+    author: authorUrn,
+    lifecycleState: 'PUBLISHED',
+    specificContent: {
+      'com.linkedin.ugc.ShareContent': {
+        shareCommentary: {
+          text: content
+        },
+        shareMediaCategory: 'NONE'
+      }
+    },
+    visibility: {
+      'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC'
+    }
+  };
+  return axios.post(`${LINKEDIN_API_URL}/ugcPosts`, postData, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+      'X-Restli-Protocol-Version': '2.0.0'
+    }
+  });
+};
+
+// Helper to refresh expired LinkedIn access token
+const refreshLinkedInToken = async (user) => {
+  if (!user.linkedIn?.refreshToken) return null;
+  try {
+    const params = new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: user.linkedIn.refreshToken,
+      client_id: process.env.LINKEDIN_CLIENT_ID,
+      client_secret: process.env.LINKEDIN_CLIENT_SECRET,
+    });
+    const res = await axios.post(LINKEDIN_TOKEN_URL, params.toString(), {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    });
+    const { access_token, refresh_token } = res.data;
+    await User.findByIdAndUpdate(user._id, {
+      'linkedIn.accessToken': access_token,
+      ...(refresh_token ? { 'linkedIn.refreshToken': refresh_token } : {})
+    });
+    return access_token;
+  } catch (err) {
+    console.error('Failed to auto-refresh LinkedIn token:', err.response?.data || err.message);
+    return null;
+  }
+};
+
 // Post to LinkedIn
 router.post('/post', authMiddleware, async (req, res) => {
   try {
@@ -204,54 +282,62 @@ router.post('/post', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'LinkedIn account not connected' });
     }
     
-    // Ensure profileId is in correct format
+    // Ensure profileId is in correct format (urn:li:person:...)
     let authorUrn = user.linkedIn.profileId;
     if (!authorUrn.startsWith('urn:li:person:')) {
       authorUrn = `urn:li:person:${authorUrn}`;
     }
-    
-    // Create LinkedIn post using UGC Posts API
-    const postData = {
-      author: authorUrn,
-      lifecycleState: 'PUBLISHED',
-      specificContent: {
-        'com.linkedin.ugc.ShareContent': {
-          shareCommentary: {
-            text: content
-          },
-          shareMediaCategory: 'NONE'
+
+    let accessToken = user.linkedIn.accessToken;
+    let response;
+    let postMethod = 'ugc';
+
+    // First attempt: try UGC Posts API
+    try {
+      response = await tryUgcPost(accessToken, authorUrn, content);
+    } catch (ugcErr) {
+      console.warn('UGC post attempt failed, attempting fallback to REST Posts API...', ugcErr.response?.data || ugcErr.message);
+
+      // If token expired, try to refresh it
+      if (ugcErr.response?.status === 401) {
+        const refreshed = await refreshLinkedInToken(user);
+        if (refreshed) {
+          accessToken = refreshed;
+        } else {
+          return res.status(401).json({ error: 'LinkedIn token expired. Please reconnect your account in Settings.' });
         }
-      },
-      visibility: {
-        'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC'
       }
-    };
-    
-    const response = await axios.post(`${LINKEDIN_API_URL}/ugcPosts`, postData, {
-      headers: {
-        'Authorization': `Bearer ${user.linkedIn.accessToken}`,
-        'Content-Type': 'application/json',
-        'X-Restli-Protocol-Version': '2.0.0'
+
+      // Fallback: try modern REST Posts API
+      try {
+        response = await tryRestPost(accessToken, authorUrn, content);
+        postMethod = 'rest';
+      } catch (restErr) {
+        console.error('LinkedIn REST Post error:', restErr.response?.data || restErr.message);
+        const errData = restErr.response?.data || ugcErr.response?.data;
+        const msg = errData?.message || errData?.errorDetails?.message || errData?.description || restErr.message;
+        const status = restErr.response?.status || ugcErr.response?.status || 500;
+        
+        if (status === 401) {
+          return res.status(401).json({ error: 'LinkedIn token expired. Please reconnect your account.' });
+        }
+        return res.status(status).json({
+          error: `Failed to post to LinkedIn: ${msg}`,
+          details: errData
+        });
       }
-    });
+    }
     
+    const postId = response.data?.id || response.headers?.['x-restli-id'] || 'published';
     res.json({ 
       success: true, 
-      postId: response.data.id,
+      postId,
+      method: postMethod,
       message: 'Posted to LinkedIn successfully!' 
     });
   } catch (error) {
-    console.error('LinkedIn post error:', error.response?.data || error.message);
-    if (error.response?.status === 401) {
-      res.status(401).json({ error: 'LinkedIn token expired. Please reconnect your account.' });
-    } else if (error.response?.data) {
-      res.status(error.response.status).json({ 
-        error: error.response.data.message || 'Failed to post to LinkedIn',
-        details: error.response.data
-      });
-    } else {
-      res.status(500).json({ error: 'Failed to post to LinkedIn' });
-    }
+    console.error('LinkedIn post unexpected error:', error.response?.data || error.message);
+    res.status(500).json({ error: 'Failed to post to LinkedIn' });
   }
 });
 

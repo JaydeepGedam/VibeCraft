@@ -33,10 +33,21 @@ const apiCall = async (endpoint: string, options: RequestInit = {}) => {
   const response = await fetch(`${API_BASE_URL}${endpoint}`, fetchOptions);
   
   if (!response.ok) {
+    if (response.status === 401) {
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('userName');
+      localStorage.removeItem('isAuthenticated');
+      if (typeof window !== 'undefined' && !window.location.pathname.includes('/login') && !window.location.pathname.includes('/signup')) {
+        window.location.href = '/login';
+      }
+    }
     // Try to parse JSON error body and pick a helpful field
     const errorBody = await response.json().catch(() => ({}));
     const msg = (errorBody && (errorBody.message || errorBody.error || errorBody.msg)) || 'Request failed';
-    throw new Error(msg);
+    const err = new Error(msg);
+    (err as any).status = response.status;
+    (err as any).data = errorBody;
+    throw err;
   }
 
   // Safely handle empty or 204 responses
@@ -72,6 +83,14 @@ export const authAPI = {
   },
 };
 
+// Quota Info interface
+export interface QuotaInfo {
+  generationsUsed: number;
+  freeGenerationLimit: number;
+  hasCustomKey: boolean;
+  remaining: number;
+}
+
 // Content API
 export const contentAPI = {
   generate: async (params: {
@@ -80,10 +99,133 @@ export const contentAPI = {
     goal: string;
     tone: string;
     mood: number;
+    audience?: string;
+    instructions?: string;
+    count?: number;
   }) => {
+    const payload = {
+      topic: params.topic,
+      type: params.contentType,
+      goal: params.goal,
+      tone: params.tone,
+      mood: params.mood,
+      audience: params.audience,
+      instructions: params.instructions,
+      count: params.count || 1,
+    };
     return apiCall(API_ENDPOINTS.GENERATE, {
       method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  generateStream: async (
+    params: {
+      topic: string;
+      contentType: string;
+      goal: string;
+      tone: string;
+      mood: number;
+      audience?: string;
+      instructions?: string;
+    },
+    onChunk: (text: string) => void,
+    signal?: AbortSignal,
+    onQuota?: (quota: any) => void
+  ) => {
+    const token = getAuthToken();
+    const payload = {
+      topic: params.topic,
+      type: params.contentType,
+      goal: params.goal,
+      tone: params.tone,
+      mood: params.mood,
+      audience: params.audience,
+      instructions: params.instructions,
+    };
+    const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.GENERATE_STREAM}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(payload),
+      signal,
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('userName');
+        localStorage.removeItem('isAuthenticated');
+        if (typeof window !== 'undefined' && !window.location.pathname.includes('/login') && !window.location.pathname.includes('/signup')) {
+          window.location.href = '/login';
+        }
+      }
+      const errBody = await response.json().catch(() => ({}));
+      const err = new Error(errBody.message || errBody.error || 'Streaming request failed');
+      (err as any).status = response.status;
+      (err as any).data = errBody;
+      throw err;
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('Streaming not supported in browser');
+    const decoder = new TextDecoder();
+    let accumulated = '';
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (value) {
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const dataStr = line.replace('data: ', '').trim();
+            if (dataStr === '[DONE]') {
+              return accumulated;
+            }
+            try {
+              const parsed = JSON.parse(dataStr);
+              if (parsed.text) {
+                accumulated += parsed.text;
+                onChunk(parsed.text);
+              }
+              if (parsed.quota && onQuota) {
+                onQuota(parsed.quota);
+              }
+            } catch (e) {
+              // Ignore incomplete chunks
+            }
+          }
+        }
+      }
+    }
+    return accumulated;
+  },
+
+  refine: async (params: {
+    content: string;
+    action: string;
+    instruction?: string;
+  }) => {
+    return apiCall(API_ENDPOINTS.REFINE, {
+      method: 'POST',
       body: JSON.stringify(params),
+    });
+  },
+
+  toggleFavorite: async (id: string) => {
+    return apiCall(`${API_ENDPOINTS.FAVORITE}/${id}/favorite`, {
+      method: 'PATCH',
+    });
+  },
+
+  markPublished: async (id: string, platform = 'LinkedIn') => {
+    return apiCall(`/content/${id}/published`, {
+      method: 'PATCH',
+      body: JSON.stringify({ platform }),
     });
   },
   
@@ -93,17 +235,25 @@ export const contentAPI = {
     goal: string;
     tone: string;
     mood: number;
+    audience?: string;
+    instructions?: string;
     generatedText: string;
+    isFavorite?: boolean;
+    isPublished?: boolean;
+    publishedPlatform?: string;
   }) => {
-    // Map frontend field names to the backend expectations:
-    // backend expects `type` and `content` keys.
     const payload = {
       topic: content.topic,
-      type: content.contentType, // backend uses `type`
+      type: content.contentType,
       goal: content.goal,
       tone: content.tone,
       mood: content.mood,
-      content: content.generatedText, // backend uses `content`
+      audience: content.audience,
+      instructions: content.instructions,
+      content: content.generatedText,
+      is_favorite: content.isFavorite || false,
+      is_published: content.isPublished || false,
+      published_platform: content.publishedPlatform || '',
     };
 
     return apiCall(API_ENDPOINTS.SAVE, {
@@ -116,36 +266,40 @@ export const contentAPI = {
     const data = await apiCall(API_ENDPOINTS.LIST, {
       method: 'GET',
     });
-    // backend returns an array for the dashboard; normalize to { contents }
-    // Map backend fields to frontend shape so UI doesn't need to know backend naming
     if (Array.isArray(data)) {
       const mapped = data.map((item: any) => ({
         _id: item._id,
         topic: item.topic || item.name || "",
-        // backend uses `type` and `content` and `created_at`
         contentType: item.type || item.contentType || "",
         goal: item.goal || "",
         tone: item.tone || "",
-        // frontend expects `generatedText`
         generatedText: item.generatedText || item.content || "",
-        // frontend expects `createdAt`
         createdAt: item.createdAt || item.created_at || item.created || "",
         mood: item.mood,
+        audience: item.audience || "",
+        instructions: item.instructions || "",
+        isFavorite: !!item.is_favorite,
+        isPublished: !!item.is_published,
+        publishedAt: item.published_at || null,
+        publishedPlatform: item.published_platform || "",
         user_id: item.user_id,
       }));
       return { contents: mapped };
     }
     return data;
   },
+
   get: async (id: string) => {
     return apiCall(`${API_ENDPOINTS.GET_CONTENT}/${id}`, {
       method: 'GET',
     });
   },
+
   // History APIs
   historyList: async () => {
     return apiCall(API_ENDPOINTS.HISTORY, { method: 'GET' });
   },
+
   historySave: async (payload: { topic: string; contentType: string; goal: string; tone: string; mood: number; generatedText: string; original_content_id?: string }) => {
     const body = {
       topic: payload.topic,
@@ -158,12 +312,12 @@ export const contentAPI = {
     };
     return apiCall(API_ENDPOINTS.HISTORY, { method: 'POST', body: JSON.stringify(body) });
   },
+
   historyDelete: async (id: string) => {
     return apiCall(`${API_ENDPOINTS.HISTORY}/${id}`, { method: 'DELETE' });
   },
   
   delete: async (id: string) => {
-    // Call DELETE /content/:id
     return apiCall(`${API_ENDPOINTS.DELETE}/${id}`, {
       method: 'DELETE',
     });
@@ -182,6 +336,8 @@ export const userAPI = {
     defaultTone?: string;
     defaultContentType?: string;
     defaultGoal?: string;
+    defaultAudience?: string;
+    customOpenAiKey?: string;
   }) => {
     return apiCall(API_ENDPOINTS.UPDATE_PREFERENCES, {
       method: 'PUT',
@@ -192,8 +348,8 @@ export const userAPI = {
 
 // LinkedIn API
 export const linkedInAPI = {
-  getAuthUrl: async () => {
-    return apiCall(API_ENDPOINTS.LINKEDIN_AUTH_URL, {
+  getAuthUrl: async (redirectTo = 'settings') => {
+    return apiCall(`${API_ENDPOINTS.LINKEDIN_AUTH_URL}?redirect_to=${redirectTo}`, {
       method: 'GET',
     });
   },

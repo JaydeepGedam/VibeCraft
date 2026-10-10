@@ -9,10 +9,13 @@ export const API_ENDPOINTS = {
   
   // Content endpoints
   GENERATE: '/content/generate',
+  GENERATE_STREAM: '/content/generate-stream',
+  REFINE: '/content/refine',
   SAVE: '/content/save',
   LIST: '/content/dashboard',
   GET_CONTENT: '/content',
   HISTORY: '/content/history',
+  FAVORITE: '/content',
   // use RESTful delete: DELETE /content/:id
   DELETE: '/content',
   
