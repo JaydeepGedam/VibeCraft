@@ -96,4 +96,13 @@ All colors MUST be HSL.
     -webkit-line-clamp: 6;
     overflow: hidden;
   }
+
+  /* Utility to completely hide scrollbar while preserving scroll functionality */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
 }

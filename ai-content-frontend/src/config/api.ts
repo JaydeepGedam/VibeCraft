@@ -18,6 +18,9 @@ export const API_ENDPOINTS = {
   FAVORITE: '/content',
   // use RESTful delete: DELETE /content/:id
   DELETE: '/content',
+  SCHEDULE: '/content/schedule',
+  CANCEL_SCHEDULE: '/content/cancel-schedule',
+  SCHEDULED_ALL: '/content/scheduled/all',
   
   // User endpoints
   PREFERENCES: '/user/preferences',

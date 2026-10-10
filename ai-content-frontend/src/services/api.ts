@@ -282,11 +282,59 @@ export const contentAPI = {
         isPublished: !!item.is_published,
         publishedAt: item.published_at || null,
         publishedPlatform: item.published_platform || "",
+        isScheduled: !!item.is_scheduled,
+        scheduledAt: item.scheduled_at || null,
+        scheduledPlatform: item.scheduled_platform || "LinkedIn",
+        scheduleStatus: item.schedule_status || "none",
+        scheduleError: item.schedule_error || "",
         user_id: item.user_id,
       }));
       return { contents: mapped };
     }
     return data;
+  },
+
+  schedule: async (payload: {
+    contentId?: string;
+    topic?: string;
+    contentType?: string;
+    goal?: string;
+    tone?: string;
+    mood?: number;
+    audience?: string;
+    instructions?: string;
+    content: string;
+    scheduledAt: string;
+    platform?: string;
+  }) => {
+    return apiCall(API_ENDPOINTS.SCHEDULE, {
+      method: 'POST',
+      body: JSON.stringify({
+        contentId: payload.contentId,
+        topic: payload.topic,
+        type: payload.contentType,
+        goal: payload.goal,
+        tone: payload.tone,
+        mood: payload.mood,
+        audience: payload.audience,
+        instructions: payload.instructions,
+        content: payload.content,
+        scheduledAt: payload.scheduledAt,
+        platform: payload.platform || 'LinkedIn',
+      }),
+    });
+  },
+
+  cancelSchedule: async (id: string) => {
+    return apiCall(`${API_ENDPOINTS.CANCEL_SCHEDULE}/${id}`, {
+      method: 'POST',
+    });
+  },
+
+  getScheduled: async () => {
+    return apiCall(API_ENDPOINTS.SCHEDULED_ALL, {
+      method: 'GET',
+    });
   },
 
   get: async (id: string) => {

@@ -267,80 +267,74 @@ const refreshLinkedInToken = async (user) => {
   }
 };
 
+// Reusable helper to post content for a given user
+const postToLinkedInForUser = async (user, content) => {
+  if (!user || !user.linkedIn || !user.linkedIn.accessToken) {
+    throw new Error('LinkedIn account not connected');
+  }
+
+  let authorUrn = user.linkedIn.profileId;
+  if (!authorUrn.startsWith('urn:li:person:')) {
+    authorUrn = `urn:li:person:${authorUrn}`;
+  }
+
+  let accessToken = user.linkedIn.accessToken;
+  let response;
+  let postMethod = 'ugc';
+
+  try {
+    response = await tryUgcPost(accessToken, authorUrn, content);
+  } catch (ugcErr) {
+    console.warn('UGC post attempt failed, attempting fallback to REST Posts API...', ugcErr.response?.data || ugcErr.message);
+
+    if (ugcErr.response?.status === 401) {
+      const refreshed = await refreshLinkedInToken(user);
+      if (refreshed) {
+        accessToken = refreshed;
+      } else {
+        throw new Error('LinkedIn token expired. Please reconnect your account in Settings.');
+      }
+    }
+
+    try {
+      response = await tryRestPost(accessToken, authorUrn, content);
+      postMethod = 'rest';
+    } catch (restErr) {
+      console.error('LinkedIn REST Post error:', restErr.response?.data || restErr.message);
+      const errData = restErr.response?.data || ugcErr.response?.data;
+      const msg = errData?.message || errData?.errorDetails?.message || errData?.description || restErr.message;
+      throw new Error(`Failed to post to LinkedIn: ${msg}`);
+    }
+  }
+
+  const postId = response.data?.id || response.headers?.['x-restli-id'] || 'published';
+  return { postId, method: postMethod };
+};
+
 // Post to LinkedIn
 router.post('/post', authMiddleware, async (req, res) => {
   try {
     const { content } = req.body;
-    
     if (!content) {
       return res.status(400).json({ error: 'Content is required' });
     }
-    
     const user = await User.findById(req.user.id).lean();
-    
-    if (!user.linkedIn || !user.linkedIn.accessToken) {
-      return res.status(400).json({ error: 'LinkedIn account not connected' });
-    }
-    
-    // Ensure profileId is in correct format (urn:li:person:...)
-    let authorUrn = user.linkedIn.profileId;
-    if (!authorUrn.startsWith('urn:li:person:')) {
-      authorUrn = `urn:li:person:${authorUrn}`;
-    }
-
-    let accessToken = user.linkedIn.accessToken;
-    let response;
-    let postMethod = 'ugc';
-
-    // First attempt: try UGC Posts API
-    try {
-      response = await tryUgcPost(accessToken, authorUrn, content);
-    } catch (ugcErr) {
-      console.warn('UGC post attempt failed, attempting fallback to REST Posts API...', ugcErr.response?.data || ugcErr.message);
-
-      // If token expired, try to refresh it
-      if (ugcErr.response?.status === 401) {
-        const refreshed = await refreshLinkedInToken(user);
-        if (refreshed) {
-          accessToken = refreshed;
-        } else {
-          return res.status(401).json({ error: 'LinkedIn token expired. Please reconnect your account in Settings.' });
-        }
-      }
-
-      // Fallback: try modern REST Posts API
-      try {
-        response = await tryRestPost(accessToken, authorUrn, content);
-        postMethod = 'rest';
-      } catch (restErr) {
-        console.error('LinkedIn REST Post error:', restErr.response?.data || restErr.message);
-        const errData = restErr.response?.data || ugcErr.response?.data;
-        const msg = errData?.message || errData?.errorDetails?.message || errData?.description || restErr.message;
-        const status = restErr.response?.status || ugcErr.response?.status || 500;
-        
-        if (status === 401) {
-          return res.status(401).json({ error: 'LinkedIn token expired. Please reconnect your account.' });
-        }
-        return res.status(status).json({
-          error: `Failed to post to LinkedIn: ${msg}`,
-          details: errData
-        });
-      }
-    }
-    
-    const postId = response.data?.id || response.headers?.['x-restli-id'] || 'published';
-    res.json({ 
-      success: true, 
-      postId,
-      method: postMethod,
-      message: 'Posted to LinkedIn successfully!' 
+    const result = await postToLinkedInForUser(user, content);
+    res.json({
+      success: true,
+      postId: result.postId,
+      method: result.method,
+      message: 'Posted to LinkedIn successfully!'
     });
   } catch (error) {
-    console.error('LinkedIn post unexpected error:', error.response?.data || error.message);
-    res.status(500).json({ error: 'Failed to post to LinkedIn' });
+    console.error('LinkedIn post error:', error.message);
+    const status = error.message.includes('expired') || error.message.includes('not connected') ? 400 : 500;
+    res.status(status).json({ error: error.message || 'Failed to post to LinkedIn' });
   }
 });
 
+router.postToLinkedInForUser = postToLinkedInForUser;
 module.exports = router;
+module.exports.postToLinkedInForUser = postToLinkedInForUser;
 
 

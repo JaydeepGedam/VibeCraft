@@ -59,6 +59,8 @@ import {
   Send,
   Key,
   Info,
+  Calendar,
+  Clock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { contentAPI, userAPI, linkedInAPI, QuotaInfo } from "@/services/api";
@@ -95,6 +97,12 @@ const Generate = () => {
   const [savedContentId, setSavedContentId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"edit" | "preview">("edit");
   const [isFeedFoldExpanded, setIsFeedFoldExpanded] = useState(false);
+
+  // Scheduling State
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+  const [scheduleDate, setScheduleDate] = useState("");
+  const [scheduleTime, setScheduleTime] = useState("09:00");
+  const [isScheduling, setIsScheduling] = useState(false);
 
   // Loading States
   const [isGenerating, setIsGenerating] = useState(false);
@@ -573,6 +581,104 @@ const Generate = () => {
       }
     } finally {
       setIsPostingToLinkedIn(false);
+    }
+  };
+
+  // Scheduling Helpers & Handlers
+  const getTomorrowDateStr = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().split("T")[0];
+  };
+
+  const getInDaysDateStr = (days: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    return d.toISOString().split("T")[0];
+  };
+
+  const getTodayDateStr = () => {
+    return new Date().toISOString().split("T")[0];
+  };
+
+  const setQuickSchedule = (days: number, timeStr: string) => {
+    setScheduleDate(getInDaysDateStr(days));
+    setScheduleTime(timeStr);
+  };
+
+  const handleOpenScheduleModal = () => {
+    if (!generatedContent.trim()) {
+      toast.error("Please generate or enter content first to schedule");
+      return;
+    }
+    if (!scheduleDate) {
+      setScheduleDate(getTomorrowDateStr());
+    }
+    setIsScheduleModalOpen(true);
+  };
+
+  const handleSchedulePost = async () => {
+    if (!generatedContent.trim()) {
+      toast.error("Content is empty");
+      return;
+    }
+    if (!scheduleDate || !scheduleTime) {
+      toast.error("Please pick a date and time");
+      return;
+    }
+
+    const combinedDateTime = new Date(`${scheduleDate}T${scheduleTime}:00`);
+    if (isNaN(combinedDateTime.getTime())) {
+      toast.error("Invalid scheduled date/time");
+      return;
+    }
+    if (combinedDateTime.getTime() <= Date.now() + 60000) {
+      toast.error("Scheduled time must be at least 1 minute in the future");
+      return;
+    }
+
+    if (!linkedInConnected) {
+      setIsScheduleModalOpen(false);
+      setIsConnectModalOpen(true);
+      toast.error("Please connect your LinkedIn account to schedule LinkedIn posts");
+      return;
+    }
+
+    try {
+      setIsScheduling(true);
+      const res = await contentAPI.schedule({
+        contentId: savedContentId || undefined,
+        topic,
+        contentType,
+        goal,
+        tone,
+        mood: mood[0],
+        audience,
+        instructions,
+        content: generatedContent,
+        scheduledAt: combinedDateTime.toISOString(),
+        platform: "LinkedIn",
+      });
+
+      if (res?.content?._id) {
+        setSavedContentId(res.content._id);
+      }
+      setCanSave(false);
+      setIsScheduleModalOpen(false);
+
+      const formatted = combinedDateTime.toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+      toast.success(`Post successfully scheduled for ${formatted}!`, {
+        description: "VibeCraft will auto-publish this post to LinkedIn at that time.",
+      });
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to schedule post");
+    } finally {
+      setIsScheduling(false);
     }
   };
 
@@ -1138,6 +1244,18 @@ const Generate = () => {
                             Connect LinkedIn
                           </Button>
                         )}
+
+                        {/* Schedule Post Action */}
+                        <Button
+                          onClick={handleOpenScheduleModal}
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 border-primary/40 text-primary hover:bg-primary hover:text-primary-foreground transition-all"
+                          disabled={!generatedContent.trim() || isGenerating}
+                        >
+                          <Calendar className="w-3.5 h-3.5" />
+                          <span>Schedule</span>
+                        </Button>
                       </div>
                     </div>
                   </>
@@ -1393,6 +1511,161 @@ const Generate = () => {
             >
               <Key className="w-4 h-4" />
               Go to Settings & Add Key
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Schedule Post Modal */}
+      <Dialog open={isScheduleModalOpen} onOpenChange={setIsScheduleModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary mb-2">
+              <Calendar className="w-5 h-5" />
+            </div>
+            <DialogTitle className="text-xl">Schedule LinkedIn Post</DialogTitle>
+            <DialogDescription className="text-sm">
+              Pick the date and time you want VibeCraft to auto-publish this post directly to your LinkedIn feed.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Quick Suggestions */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Quick Presets
+              </Label>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs"
+                  onClick={() => setQuickSchedule(1, "09:00")}
+                >
+                  Tomorrow 9 AM
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs"
+                  onClick={() => setQuickSchedule(1, "13:00")}
+                >
+                  Tomorrow 1 PM
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs"
+                  onClick={() => setQuickSchedule(1, "17:30")}
+                >
+                  Tomorrow 5:30 PM
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs"
+                  onClick={() => setQuickSchedule(2, "10:00")}
+                >
+                  In 2 Days 10 AM
+                </Button>
+              </div>
+            </div>
+
+            {/* Custom Date & Time Picker */}
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <div className="space-y-1.5">
+                <Label htmlFor="schedule-date" className="text-xs font-medium">
+                  Date
+                </Label>
+                <Input
+                  id="schedule-date"
+                  type="date"
+                  min={getTodayDateStr()}
+                  value={scheduleDate}
+                  onChange={(e) => setScheduleDate(e.target.value)}
+                  className="text-xs h-9"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="schedule-time" className="text-xs font-medium">
+                  Time
+                </Label>
+                <Input
+                  id="schedule-time"
+                  type="time"
+                  value={scheduleTime}
+                  onChange={(e) => setScheduleTime(e.target.value)}
+                  className="text-xs h-9"
+                />
+              </div>
+            </div>
+
+            {/* Account Status Indicator */}
+            <div className="p-3 rounded-lg border bg-secondary/30 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <Linkedin className="w-4 h-4 text-[#0077B5] fill-current" />
+                <span className="font-medium truncate max-w-[200px]">
+                  {linkedInConnected
+                    ? `Account: ${linkedInProfileName || "Connected"}`
+                    : "LinkedIn Not Connected"}
+                </span>
+              </div>
+              {linkedInConnected ? (
+                <Badge variant="outline" className="text-[10px] bg-green-500/10 text-green-600 border-green-500/20">
+                  Ready
+                </Badge>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsScheduleModalOpen(false);
+                    setIsConnectModalOpen(true);
+                  }}
+                  className="text-[#0077B5] hover:underline font-semibold"
+                >
+                  Connect Now
+                </button>
+              )}
+            </div>
+
+            {/* Snippet Preview */}
+            <div className="p-3 rounded-lg bg-secondary/20 border border-border/60 text-xs text-muted-foreground">
+              <p className="font-medium text-foreground mb-1">Post Preview:</p>
+              <p className="line-clamp-2 italic">
+                &ldquo;{generatedContent.slice(0, 140)}...&rdquo;
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setIsScheduleModalOpen(false)}
+              disabled={isScheduling}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSchedulePost}
+              disabled={isScheduling || !scheduleDate || !scheduleTime}
+              className="gap-2 shadow-sm"
+            >
+              {isScheduling ? (
+                <>
+                  <RotateCw className="w-4 h-4 animate-spin" />
+                  Scheduling...
+                </>
+              ) : (
+                <>
+                  <Clock className="w-4 h-4" />
+                  Confirm & Schedule
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

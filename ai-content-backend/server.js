@@ -22,4 +22,9 @@ app.use('/user', userRoutes);
 app.use('/linkedin', linkedinRoutes);
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+  // Start background post scheduler
+  const schedulerService = require('./services/schedulerService');
+  schedulerService.start();
+});

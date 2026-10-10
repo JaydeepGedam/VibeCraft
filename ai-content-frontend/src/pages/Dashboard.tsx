@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import Layout from "@/components/Layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,6 +19,10 @@ import {
   Filter,
   Sparkles,
   CheckCircle2,
+  Calendar,
+  Clock,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -51,8 +55,134 @@ interface Content {
   isFavorite?: boolean;
   isPublished?: boolean;
   publishedPlatform?: string;
+  isScheduled?: boolean;
+  scheduledAt?: string | null;
+  scheduledPlatform?: string;
+  scheduleStatus?: 'none' | 'pending' | 'published' | 'failed';
+  scheduleError?: string;
   audience?: string;
 }
+
+const CardBadgeRow = ({
+  content,
+  formatScheduledDate,
+}: {
+  content: Content;
+  formatScheduledDate: (d?: string | null) => string;
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const checkScroll = () => {
+    const el = containerRef.current;
+    if (!el) return;
+    const hasOverflow = el.scrollWidth > el.clientWidth + 2;
+    setCanScrollLeft(el.scrollLeft > 2);
+    setCanScrollRight(hasOverflow && el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
+  };
+
+  useEffect(() => {
+    checkScroll();
+    const handleResize = () => checkScroll();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [content]);
+
+  const handleScroll = (direction: "left" | "right") => {
+    const el = containerRef.current;
+    if (!el) return;
+    const scrollAmount = 140;
+    el.scrollBy({
+      left: direction === "right" ? scrollAmount : -scrollAmount,
+      behavior: "smooth",
+    });
+    setTimeout(checkScroll, 200);
+  };
+
+  return (
+    <div className="relative flex items-center gap-1 min-w-0 max-w-full">
+      {canScrollLeft && (
+        <button
+          type="button"
+          onClick={() => handleScroll("left")}
+          className="shrink-0 h-5 w-5 rounded-full bg-secondary hover:bg-secondary/80 text-muted-foreground hover:text-foreground flex items-center justify-center border border-border shadow-xs transition-colors"
+          title="Previous tags"
+          aria-label="Previous tags"
+        >
+          <ChevronLeft className="w-3 h-3" />
+        </button>
+      )}
+
+      <div
+        ref={containerRef}
+        onScroll={checkScroll}
+        onWheel={(e) => {
+          if (e.currentTarget.scrollWidth > e.currentTarget.clientWidth) {
+            if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+              e.currentTarget.scrollLeft += e.deltaY;
+            }
+          }
+        }}
+        className="flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth min-w-0 flex-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden py-0.5"
+      >
+        {content.contentType && (
+          <Badge
+            className={`shrink-0 text-[11px] font-medium ${
+              content.contentType.toLowerCase() === "linkedin"
+                ? "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border-blue-200"
+                : "bg-secondary text-secondary-foreground"
+            }`}
+          >
+            {content.contentType}
+          </Badge>
+        )}
+        {content.isPublished && (
+          <Badge
+            className="shrink-0 text-[11px] font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-300 flex items-center gap-1"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            Published to {content.publishedPlatform || "LinkedIn"}
+          </Badge>
+        )}
+        {content.isScheduled && content.scheduleStatus === "pending" && (
+          <Badge
+            className="shrink-0 text-[11px] font-medium bg-amber-100 text-amber-900 dark:bg-amber-950/70 dark:text-amber-200 border-amber-300 flex items-center gap-1"
+          >
+            <Clock className="w-3 h-3 text-amber-600 dark:text-amber-400 animate-pulse" />
+            Scheduled: {formatScheduledDate(content.scheduledAt)}
+          </Badge>
+        )}
+        {content.scheduleStatus === "failed" && (
+          <Badge
+            variant="destructive"
+            className="shrink-0 text-[11px] font-medium flex items-center gap-1"
+            title={content.scheduleError || "Publishing failed"}
+          >
+            Publish Failed
+          </Badge>
+        )}
+        {content.tone && (
+          <Badge variant="outline" className="shrink-0 text-[11px]">
+            {content.tone}
+          </Badge>
+        )}
+      </div>
+
+      {canScrollRight && (
+        <button
+          type="button"
+          onClick={() => handleScroll("right")}
+          className="shrink-0 h-5 w-5 rounded-full bg-secondary hover:bg-secondary/80 text-muted-foreground hover:text-foreground flex items-center justify-center border border-border shadow-xs transition-colors"
+          title="More tags"
+          aria-label="More tags"
+        >
+          <ChevronRight className="w-3 h-3" />
+        </button>
+      )}
+    </div>
+  );
+};
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -67,9 +197,16 @@ const Dashboard = () => {
   const [typeFilter, setTypeFilter] = useState("all");
   const [favoriteOnly, setFavoriteOnly] = useState(false);
   const [publishedOnly, setPublishedOnly] = useState(false);
+  const [scheduledOnly, setScheduledOnly] = useState(false);
 
   const from = location.state?.from;
   const welcomeMessage = from === "signup" ? `Welcome, ${userName}!` : `Welcome Back, ${userName}!`;
+
+  useEffect(() => {
+    if (location.state?.tab === "scheduled") {
+      setScheduledOnly(true);
+    }
+  }, [location]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -147,6 +284,16 @@ const Dashboard = () => {
     navigate("/generate", { state: { regenerate: content } });
   };
 
+  const handleCancelSchedule = async (id: string) => {
+    try {
+      await contentAPI.cancelSchedule(id);
+      toast.success("Scheduled post cancelled");
+      loadContents();
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to cancel schedule");
+    }
+  };
+
   const formatDate = (dateString: string) => {
     if (!dateString) return "Recently";
     return new Date(dateString).toLocaleDateString("en-US", {
@@ -154,6 +301,21 @@ const Dashboard = () => {
       month: "short",
       day: "numeric",
     });
+  };
+
+  const formatScheduledDate = (dateString?: string | null) => {
+    if (!dateString) return "";
+    try {
+      return new Date(dateString).toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      });
+    } catch {
+      return dateString;
+    }
   };
 
   // Filtered contents
@@ -176,9 +338,12 @@ const Dashboard = () => {
       // Published filter
       const matchesPublished = !publishedOnly || !!item.isPublished;
 
-      return matchesSearch && matchesType && matchesFavorite && matchesPublished;
+      // Scheduled filter
+      const matchesScheduled = !scheduledOnly || (!!item.isScheduled && item.scheduleStatus === "pending");
+
+      return matchesSearch && matchesType && matchesFavorite && matchesPublished && matchesScheduled;
     });
-  }, [contents, searchQuery, typeFilter, favoriteOnly, publishedOnly]);
+  }, [contents, searchQuery, typeFilter, favoriteOnly, publishedOnly, scheduledOnly]);
 
   return (
     <Layout showNav>
@@ -246,6 +411,16 @@ const Dashboard = () => {
               <CheckCircle2 className={`w-4 h-4 ${publishedOnly ? "text-emerald-400" : ""}`} />
               Published
             </Button>
+
+            <Button
+              variant={scheduledOnly ? "default" : "outline"}
+              size="sm"
+              onClick={() => setScheduledOnly(!scheduledOnly)}
+              className="gap-1.5 h-10 px-3.5"
+            >
+              <Calendar className={`w-4 h-4 ${scheduledOnly ? "text-primary-foreground" : "text-primary"}`} />
+              Scheduled
+            </Button>
           </div>
         </div>
 
@@ -284,6 +459,7 @@ const Dashboard = () => {
                 setTypeFilter("all");
                 setFavoriteOnly(false);
                 setPublishedOnly(false);
+                setScheduledOnly(false);
               }}
             >
               Clear filters
@@ -303,32 +479,7 @@ const Dashboard = () => {
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="space-y-1.5 flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          {content.contentType && (
-                            <Badge
-                              className={`text-[11px] font-medium ${
-                                content.contentType.toLowerCase() === "linkedin"
-                                  ? "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border-blue-200"
-                                  : "bg-secondary text-secondary-foreground"
-                              }`}
-                            >
-                              {content.contentType}
-                            </Badge>
-                          )}
-                          {content.isPublished && (
-                            <Badge
-                              className="text-[11px] font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-300 flex items-center gap-1"
-                            >
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                              Published to {content.publishedPlatform || "LinkedIn"}
-                            </Badge>
-                          )}
-                          {content.tone && (
-                            <Badge variant="outline" className="text-[11px]">
-                              {content.tone}
-                            </Badge>
-                          )}
-                        </div>
+                        <CardBadgeRow content={content} formatScheduledDate={formatScheduledDate} />
                         <CardTitle className="text-lg font-bold truncate group-hover:text-primary transition-colors">
                           {content.topic || "Untitled Content"}
                         </CardTitle>
@@ -413,6 +564,18 @@ const Dashboard = () => {
                           <RotateCw className="w-3.5 h-3.5" />
                           Tune
                         </Button>
+                        {content.isScheduled && content.scheduleStatus === "pending" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleCancelSchedule(content._id)}
+                            className="h-8 px-2 text-xs gap-1 text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+                            title="Cancel scheduled publish"
+                          >
+                            <Clock className="w-3.5 h-3.5" />
+                            Cancel
+                          </Button>
+                        )}
                       </div>
 
                       <div className="flex gap-1">

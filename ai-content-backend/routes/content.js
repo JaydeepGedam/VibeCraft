@@ -594,4 +594,136 @@ router.patch('/:id/published', authMiddleware, async (req, res) => {
   }
 });
 
+// Schedule content to be auto-published
+router.post('/schedule', authMiddleware, async (req, res) => {
+  try {
+    const {
+      contentId,
+      topic,
+      type,
+      goal,
+      tone,
+      mood,
+      audience,
+      instructions,
+      content,
+      scheduledAt,
+      platform = 'LinkedIn'
+    } = req.body;
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({ error: 'Content is required to schedule' });
+    }
+    if (!scheduledAt) {
+      return res.status(400).json({ error: 'Scheduled date and time is required' });
+    }
+
+    const scheduledDate = new Date(scheduledAt);
+    if (isNaN(scheduledDate.getTime())) {
+      return res.status(400).json({ error: 'Invalid scheduled date' });
+    }
+
+    const now = new Date();
+    if (scheduledDate.getTime() <= now.getTime()) {
+      return res.status(400).json({ error: 'Scheduled time must be in the future' });
+    }
+
+    // If scheduling for LinkedIn, check that user has connected LinkedIn
+    if (platform === 'LinkedIn') {
+      const user = await User.findById(req.user.id).select('linkedIn').lean();
+      if (!user?.linkedIn?.accessToken) {
+        return res.status(400).json({
+          error: 'Please connect your LinkedIn account first to schedule LinkedIn posts.'
+        });
+      }
+    }
+
+    let contentDoc;
+    if (contentId && mongoose.Types.ObjectId.isValid(contentId)) {
+      contentDoc = await GeneratedContent.findOne({ _id: contentId, user_id: req.user.id });
+    }
+
+    if (contentDoc) {
+      contentDoc.topic = topic || contentDoc.topic;
+      contentDoc.type = type || contentDoc.type;
+      contentDoc.goal = goal || contentDoc.goal;
+      contentDoc.tone = tone || contentDoc.tone;
+      contentDoc.mood = mood !== undefined ? String(mood) : contentDoc.mood;
+      contentDoc.audience = audience || contentDoc.audience;
+      contentDoc.instructions = instructions !== undefined ? instructions : contentDoc.instructions;
+      contentDoc.content = content;
+      contentDoc.is_scheduled = true;
+      contentDoc.scheduled_at = scheduledDate;
+      contentDoc.scheduled_platform = platform;
+      contentDoc.schedule_status = 'pending';
+      contentDoc.schedule_error = '';
+      contentDoc.is_published = false;
+      await contentDoc.save();
+    } else {
+      contentDoc = new GeneratedContent({
+        user_id: req.user.id,
+        topic: topic || 'Scheduled Post',
+        type: type || 'LinkedIn',
+        goal: goal || 'Educate',
+        tone: tone || 'Professional',
+        mood: mood !== undefined ? String(mood) : '50',
+        audience: audience || 'General',
+        instructions: instructions || '',
+        content,
+        is_scheduled: true,
+        scheduled_at: scheduledDate,
+        scheduled_platform: platform,
+        schedule_status: 'pending',
+        schedule_error: '',
+        is_published: false
+      });
+      await contentDoc.save();
+    }
+
+    res.json({
+      success: true,
+      content: contentDoc,
+      message: `Post successfully scheduled for ${scheduledDate.toLocaleString()}`
+    });
+  } catch (err) {
+    console.error('Schedule error:', err);
+    res.status(500).json({ error: 'Failed to schedule post' });
+  }
+});
+
+// Cancel a scheduled post
+router.post('/cancel-schedule/:id', authMiddleware, async (req, res) => {
+  const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({ error: 'Invalid content id' });
+  }
+  try {
+    const item = await GeneratedContent.findOne({ _id: id, user_id: req.user.id });
+    if (!item) return res.status(404).json({ error: 'Content not found' });
+    item.is_scheduled = false;
+    item.schedule_status = 'none';
+    item.schedule_error = '';
+    await item.save();
+    res.json({ success: true, message: 'Scheduled post cancelled' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get user's scheduled posts
+router.get('/scheduled/all', authMiddleware, async (req, res) => {
+  try {
+    const items = await GeneratedContent.find({
+      user_id: req.user.id,
+      is_scheduled: true,
+      schedule_status: 'pending'
+    }).sort({ scheduled_at: 1 });
+    res.json(items);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;
