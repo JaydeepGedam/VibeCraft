@@ -263,7 +263,7 @@ router.post('/generate', authMiddleware, async (req, res) => {
                 });
 
                 const completion = await aiClient.chat.completions.create({
-                    model: "gpt-3.5-turbo",
+                    model: "gpt-4o-mini",
                     messages: [
                         { role: "system", content: "You are an elite copywriter and content strategist. You write thorough, high-converting, publication-ready content with substantial depth. Never write shallow summaries." },
                         { role: "user", content: prompt }
@@ -297,7 +297,7 @@ router.post('/generate', authMiddleware, async (req, res) => {
         });
         
         const completion = await aiClient.chat.completions.create({
-            model: "gpt-3.5-turbo",
+            model: "gpt-4o-mini",
             messages: [
                 { role: "system", content: "You are an elite copywriter and content strategist. Never produce brief summaries. Always write complete, in-depth content." },
                 { role: "user", content: prompt }
@@ -352,7 +352,7 @@ router.post('/generate-stream', authMiddleware, async (req, res) => {
         const aiClient = await getOpenAIClient(req.user.id);
 
         const stream = await aiClient.chat.completions.create({
-            model: "gpt-3.5-turbo",
+            model: "gpt-4o-mini",
             messages: [
                 { role: "system", content: "You are an elite copywriter and content strategist. Never produce brief summaries. Always write complete, in-depth content." },
                 { role: "user", content: prompt }
@@ -429,7 +429,7 @@ Return ONLY the final polished content without introductory remarks or conversat
 
         const aiClient = await getOpenAIClient(req.user.id);
         const completion = await aiClient.chat.completions.create({
-            model: "gpt-3.5-turbo",
+            model: "gpt-4o-mini",
             messages: [{ role: "user", content: prompt }],
             max_tokens: 1500,
             temperature: 0.6
