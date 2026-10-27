@@ -11,7 +11,7 @@ router.get('/preferences', authMiddleware, async (req, res) => {
             return res.status(404).json({ error: 'User not found' });
         }
         const hasCustomKey = !!(user.preferences?.customOpenAiKey && user.preferences.customOpenAiKey.trim().startsWith('sk-'));
-        const limit = typeof user.freeGenerationLimit === 'number' ? user.freeGenerationLimit : 15;
+        const limit = typeof user.freeGenerationLimit === 'number' ? user.freeGenerationLimit : 5;
         const used = typeof user.generationsUsed === 'number' ? user.generationsUsed : 0;
         const remaining = Math.max(0, limit - used);
 
@@ -57,7 +57,7 @@ router.put('/preferences/update', authMiddleware, async (req, res) => {
         }
 
         const hasCustomKey = !!(user.preferences?.customOpenAiKey && user.preferences.customOpenAiKey.trim().startsWith('sk-'));
-        const limit = typeof user.freeGenerationLimit === 'number' ? user.freeGenerationLimit : 15;
+        const limit = typeof user.freeGenerationLimit === 'number' ? user.freeGenerationLimit : 5;
         const used = typeof user.generationsUsed === 'number' ? user.generationsUsed : 0;
         const remaining = Math.max(0, limit - used);
 

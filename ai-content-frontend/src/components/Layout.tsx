@@ -12,6 +12,7 @@ const Layout = ({ children, showNav = false }: LayoutProps) => {
   const navigate = useNavigate();
   const location = useLocation();
   const isAuthenticated = localStorage.getItem("isAuthenticated") === "true";
+  const userName = localStorage.getItem("userName") || "";
 
   const [isDark, setIsDark] = useState<boolean>(() => {
     if (typeof window !== "undefined") {
@@ -95,6 +96,20 @@ const Layout = ({ children, showNav = false }: LayoutProps) => {
                 >
                   {isDark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-700 dark:text-slate-300" />}
                 </Button>
+
+                {/* Logged-in user avatar chip */}
+                {userName && (
+                  <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-secondary/60 border border-border/60">
+                    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center shrink-0">
+                      <span className="text-[11px] font-bold text-primary-foreground">
+                        {userName.charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                    <span className="hidden md:block text-sm font-medium text-foreground max-w-[120px] truncate">
+                      {userName}
+                    </span>
+                  </div>
+                )}
 
                 <Button onClick={handleLogout} variant="outline" size="sm" className="gap-2">
                   <LogOut className="w-4 h-4" />

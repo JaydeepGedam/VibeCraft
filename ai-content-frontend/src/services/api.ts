@@ -63,19 +63,28 @@ const apiCall = async (endpoint: string, options: RequestInit = {}) => {
 // Auth API
 export const authAPI = {
   login: async (email: string, password: string) => {
-    return apiCall(API_ENDPOINTS.LOGIN, {
+    return apiCall('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
   },
-  
-  signup: async (name: string, email: string, password: string) => {
-    return apiCall(API_ENDPOINTS.SIGNUP, {
+
+  // Step 1: send OTP email
+  sendOtp: async (name: string, email: string, password: string) => {
+    return apiCall(API_ENDPOINTS.SEND_OTP, {
       method: 'POST',
       body: JSON.stringify({ name, email, password }),
     });
   },
-  
+
+  // Step 2: verify OTP and create account
+  verifyOtp: async (email: string, otp: string) => {
+    return apiCall(API_ENDPOINTS.VERIFY_OTP, {
+      method: 'POST',
+      body: JSON.stringify({ email, otp }),
+    });
+  },
+
   logout: async () => {
     return apiCall(API_ENDPOINTS.LOGOUT, {
       method: 'POST',

@@ -19,7 +19,7 @@ const userSchema = new mongoose.Schema({
         customOpenAiKey: { type: String, default: '' }
     },
     generationsUsed: { type: Number, default: 0 },
-    freeGenerationLimit: { type: Number, default: 15 }
+    freeGenerationLimit: { type: Number, default: 5 }
 });
 
 // Enforce one Vibecraft account per LinkedIn profile

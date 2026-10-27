@@ -3,8 +3,8 @@ export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:50
 
 export const API_ENDPOINTS = {
   // Auth endpoints
-  LOGIN: '/auth/login',
-  SIGNUP: '/auth/signup',
+  SEND_OTP: '/auth/send-otp',
+  VERIFY_OTP: '/auth/verify-otp',
   LOGOUT: '/auth/logout',
   
   // Content endpoints

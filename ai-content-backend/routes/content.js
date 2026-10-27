@@ -52,7 +52,7 @@ const checkQuota = async (userId) => {
         return { allowed: true, hasCustomKey: true, quota: { hasCustomKey: true } };
     }
 
-    const limit = typeof user.freeGenerationLimit === 'number' ? user.freeGenerationLimit : 15;
+    const limit = typeof user.freeGenerationLimit === 'number' ? user.freeGenerationLimit : 5;
     const used = typeof user.generationsUsed === 'number' ? user.generationsUsed : 0;
 
     if (used >= limit) {
@@ -91,7 +91,7 @@ const recordGenerationUsage = async (userId, hasCustomKey) => {
             { $inc: { generationsUsed: 1 } },
             { new: true }
         ).select('generationsUsed freeGenerationLimit');
-        const limit = updated?.freeGenerationLimit ?? 15;
+        const limit = updated?.freeGenerationLimit ?? 5;
         const used = updated?.generationsUsed ?? 0;
         return {
             generationsUsed: used,
