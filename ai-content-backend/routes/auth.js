@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const axios = require('axios');
 const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 const User = require('../models/User');
 const PendingSignup = require('../models/PendingSignup');
 const { hashPassword, comparePassword } = require('../utils/hash');
@@ -29,41 +30,55 @@ const buildOtpEmailHtml = (otp) => `
 `;
 
 const sendOtpEmail = async ({ email, otp }) => {
-    const payload = {
-        sender: {
-            name: 'VibeCraft',
-            email: process.env.SENDER_EMAIL || process.env.GMAIL_USER
-        },
-        to: [{ email }],
-        subject: 'Your VibeCraft verification code',
-        htmlContent: buildOtpEmailHtml(otp)
-    };
+    const subject = 'Your VibeCraft verification code';
+    const html = buildOtpEmailHtml(otp);
+    const senderEmail = process.env.SENDER_EMAIL;
+    let lastAuthError;
 
-    const brevoHeaders = {
-        'api-key': process.env.BREVO_API_KEY,
-        'Content-Type': 'application/json'
-    };
-
-    try {
-        if (process.env.BREVO_API_KEY && process.env.SENDER_EMAIL) {
-            await axios.post('https://api.brevo.com/v3/smtp/email', payload, { headers: brevoHeaders });
+    if (process.env.BREVO_API_KEY && senderEmail) {
+        try {
+            await axios.post('https://api.brevo.com/v3/smtp/email', {
+                sender: { name: 'VibeCraft', email: senderEmail },
+                to: [{ email }],
+                subject,
+                htmlContent: html
+            }, {
+                headers: {
+                    'api-key': process.env.BREVO_API_KEY,
+                    'Content-Type': 'application/json'
+                }
+            });
             return;
+        } catch (error) {
+            const status = error.response?.status;
+            if (status !== 401 && status !== 403) throw error;
+            const providerMessage = error.response?.data?.message || 'check the Brevo API key';
+            lastAuthError = new Error(`Brevo authentication failed (${status}): ${providerMessage}`);
+            console.warn('Brevo authentication failed; trying the next configured OTP provider.');
         }
-    } catch (error) {
-        const status = error.response?.status;
-        const isAuthFailure = status === 401 || status === 403 || !process.env.BREVO_API_KEY;
+    }
 
-        if (!isAuthFailure) {
-            throw error;
+    const resendApiKey = process.env.RESEND_API_KEY || process.env.RESEND_API_Key;
+    if (resendApiKey && senderEmail) {
+        const resend = new Resend(resendApiKey);
+        const { data, error } = await resend.emails.send({
+            from: `VibeCraft <${senderEmail}>`,
+            to: email,
+            subject,
+            html
+        });
+
+        if (!error && data) return;
+        if (error?.statusCode !== 401 && error?.statusCode !== 403) {
+            throw new Error(error?.message || 'Resend failed to send the verification email.');
         }
+        lastAuthError = new Error(error.message);
+        console.warn('Resend authentication failed; trying the next configured OTP provider.');
+    }
 
-        const gmailUser = process.env.GMAIL_USER;
-        const gmailPass = process.env.GMAIL_APP_PASSWORD;
-
-        if (!gmailUser || !gmailPass) {
-            throw error;
-        }
-
+    const gmailUser = process.env.GMAIL_USER;
+    const gmailPass = process.env.GMAIL_APP_PASSWORD;
+    if (gmailUser && gmailPass) {
         const transporter = nodemailer.createTransport({
             service: 'gmail',
             auth: {
@@ -75,32 +90,14 @@ const sendOtpEmail = async ({ email, otp }) => {
         await transporter.sendMail({
             from: `"VibeCraft" <${gmailUser}>`,
             to: email,
-            subject: 'Your VibeCraft verification code',
-            html: buildOtpEmailHtml(otp)
+            subject,
+            html
         });
         return;
     }
 
-    const gmailUser = process.env.GMAIL_USER;
-    const gmailPass = process.env.GMAIL_APP_PASSWORD;
-    if (!gmailUser || !gmailPass) {
-        throw new Error('OTP delivery provider is not configured. Set BREVO_API_KEY/SENDER_EMAIL or GMAIL credentials.');
-    }
-
-    const transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-            user: gmailUser,
-            pass: gmailPass
-        }
-    });
-
-    await transporter.sendMail({
-        from: `"VibeCraft" <${gmailUser}>`,
-        to: email,
-        subject: 'Your VibeCraft verification code',
-        html: buildOtpEmailHtml(otp)
-    });
+    if (lastAuthError) throw lastAuthError;
+    throw new Error('OTP delivery provider is not configured. Set BREVO_API_KEY and SENDER_EMAIL, RESEND_API_KEY and SENDER_EMAIL, or GMAIL_USER and GMAIL_APP_PASSWORD.');
 };
 
 // Mask email for display in the UI (e.g. j***p@gmail.com)
@@ -153,7 +150,11 @@ router.post('/send-otp', async (req, res) => {
             message: 'OTP sent to your email address'
         });
     } catch (err) {
-        console.error('Send OTP error:', err);
+        console.error('Send OTP error:', {
+            message: err.message,
+            providerStatus: err.response?.status,
+            providerError: err.response?.data?.message || err.response?.data?.code
+        });
         await PendingSignup.deleteOne({ email }).catch(() => {});
         if (err.code === 11000) {
             return res.status(400).json({ error: 'Email already exists. Please login.' });
