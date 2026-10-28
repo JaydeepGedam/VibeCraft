@@ -2,22 +2,106 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
+const axios = require('axios');
 const nodemailer = require('nodemailer');
 const User = require('../models/User');
 const PendingSignup = require('../models/PendingSignup');
 const { hashPassword, comparePassword } = require('../utils/hash');
 
-// Gmail SMTP transporter — uses App Password (no domain ownership required)
-const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-        user: process.env.GMAIL_USER,
-        pass: process.env.GMAIL_APP_PASSWORD,
-    },
-});
-
 // Generate a cryptographically random 6-digit OTP
 const generateOtp = () => Math.floor(100000 + Math.random() * 900000).toString();
+
+const buildOtpEmailHtml = (otp) => `
+    <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;background:#0f0f0f;border-radius:12px;color:#fff;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:24px;">
+            <div style="background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:8px;padding:8px;display:inline-block;">
+                <span style="font-size:20px;">✦</span>
+            </div>
+            <span style="font-size:22px;font-weight:700;color:#8b5cf6;margin-left:8px;">VibeCraft</span>
+        </div>
+        <h2 style="font-size:20px;margin:0 0 8px;">Verify your email</h2>
+        <p style="color:#a0a0a0;margin:0 0 28px;font-size:15px;">Enter the code below to complete your VibeCraft signup. It expires in <strong style="color:#fff;">10 minutes</strong>.</p>
+        <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:28px;text-align:center;margin-bottom:24px;">
+            <span style="font-size:40px;font-weight:800;letter-spacing:12px;color:#8b5cf6;">${otp}</span>
+        </div>
+        <p style="color:#666;font-size:13px;margin:0;">If you didn't request this, you can safely ignore this email.</p>
+    </div>
+`;
+
+const sendOtpEmail = async ({ email, otp }) => {
+    const payload = {
+        sender: {
+            name: 'VibeCraft',
+            email: process.env.SENDER_EMAIL || process.env.GMAIL_USER
+        },
+        to: [{ email }],
+        subject: 'Your VibeCraft verification code',
+        htmlContent: buildOtpEmailHtml(otp)
+    };
+
+    const brevoHeaders = {
+        'api-key': process.env.BREVO_API_KEY,
+        'Content-Type': 'application/json'
+    };
+
+    try {
+        if (process.env.BREVO_API_KEY && process.env.SENDER_EMAIL) {
+            await axios.post('https://api.brevo.com/v3/smtp/email', payload, { headers: brevoHeaders });
+            return;
+        }
+    } catch (error) {
+        const status = error.response?.status;
+        const isAuthFailure = status === 401 || status === 403 || !process.env.BREVO_API_KEY;
+
+        if (!isAuthFailure) {
+            throw error;
+        }
+
+        const gmailUser = process.env.GMAIL_USER;
+        const gmailPass = process.env.GMAIL_APP_PASSWORD;
+
+        if (!gmailUser || !gmailPass) {
+            throw error;
+        }
+
+        const transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+                user: gmailUser,
+                pass: gmailPass
+            }
+        });
+
+        await transporter.sendMail({
+            from: `"VibeCraft" <${gmailUser}>`,
+            to: email,
+            subject: 'Your VibeCraft verification code',
+            html: buildOtpEmailHtml(otp)
+        });
+        return;
+    }
+
+    const gmailUser = process.env.GMAIL_USER;
+    const gmailPass = process.env.GMAIL_APP_PASSWORD;
+    if (!gmailUser || !gmailPass) {
+        throw new Error('OTP delivery provider is not configured. Set BREVO_API_KEY/SENDER_EMAIL or GMAIL credentials.');
+    }
+
+    const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+            user: gmailUser,
+            pass: gmailPass
+        }
+    });
+
+    await transporter.sendMail({
+        from: `"VibeCraft" <${gmailUser}>`,
+        to: email,
+        subject: 'Your VibeCraft verification code',
+        html: buildOtpEmailHtml(otp)
+    });
+};
 
 // Mask email for display in the UI (e.g. j***p@gmail.com)
 const maskEmail = (email) => {
@@ -60,28 +144,8 @@ router.post('/send-otp', async (req, res) => {
             { upsert: true, new: true }
         );
 
-        // Send OTP email via Gmail SMTP
-        await transporter.sendMail({
-            from: `"VibeCraft" <${process.env.GMAIL_USER}>`,
-            to: email,
-            subject: 'Your VibeCraft verification code',
-            html: `
-                <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;background:#0f0f0f;border-radius:12px;color:#fff;">
-                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:24px;">
-                        <div style="background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:8px;padding:8px;display:inline-block;">
-                            <span style="font-size:20px;">✦</span>
-                        </div>
-                        <span style="font-size:22px;font-weight:700;color:#8b5cf6;margin-left:8px;">VibeCraft</span>
-                    </div>
-                    <h2 style="font-size:20px;margin:0 0 8px;">Verify your email</h2>
-                    <p style="color:#a0a0a0;margin:0 0 28px;font-size:15px;">Enter the code below to complete your VibeCraft signup. It expires in <strong style="color:#fff;">10 minutes</strong>.</p>
-                    <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:28px;text-align:center;margin-bottom:24px;">
-                        <span style="font-size:40px;font-weight:800;letter-spacing:12px;color:#8b5cf6;">${otp}</span>
-                    </div>
-                    <p style="color:#666;font-size:13px;margin:0;">If you didn't request this, you can safely ignore this email.</p>
-                </div>
-            `
-        });
+        // Send OTP email via the configured provider, falling back if Brevo rejects the key.
+        await sendOtpEmail({ email, otp });
 
         res.json({
             success: true,
@@ -90,10 +154,11 @@ router.post('/send-otp', async (req, res) => {
         });
     } catch (err) {
         console.error('Send OTP error:', err);
+        await PendingSignup.deleteOne({ email }).catch(() => {});
         if (err.code === 11000) {
             return res.status(400).json({ error: 'Email already exists. Please login.' });
         }
-        res.status(500).json({ error: 'Failed to send verification email. Please try again.' });
+        return res.status(500).json({ error: 'Failed to send verification email. Please try again.' });
     }
 });
 
